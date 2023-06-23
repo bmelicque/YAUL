@@ -1,9 +1,10 @@
+import { InDOMElement, fragmentToFlatArray, valueToNode } from "./lib/dom";
+
 // TODO:
 //	- signals in attributes
 //		(add comment above element)
-//	- return conditionnel ??
+//	- css? tailwind?
 
-// TODO
 declare global {
 	namespace JSX {
 		type Element = Node;
@@ -14,6 +15,7 @@ declare global {
 
 		interface IntrinsicElements extends IntrinsicElementsMap {}
 
+		// TODO
 		type IntrinsicElementsMap = {
 			[K in keyof HTMLElementTagNameMap]: {
 				[k: string]: any;
@@ -26,21 +28,9 @@ declare global {
 	}
 }
 
-type InDOMElement = HTMLElement | Comment | Text;
-type ValidNode = InDOMElement | DocumentFragment;
-
-function isValidNode(value: any): value is ValidNode {
-	if (typeof value !== "object") return false;
-	if (value instanceof HTMLElement) return true;
-	if (value instanceof Comment) return true;
-	if (value instanceof Text) return true;
-	if (value instanceof DocumentFragment) return true;
-	return false;
-}
-
 export function jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
 	if (tag === jsx.Fragments) {
-		return jsx.Fragments(undefined, ...children);
+		return jsx.Fragments(null, ...children);
 	}
 	if (typeof tag === "function") {
 		return tag(Object.assign(properties ?? {}, { children }));
@@ -75,8 +65,6 @@ jsx.Fragments = function (_: any, ...children: Node[]): Node {
 	return fragment;
 };
 
-// TODO monad-like expression as parameter?
-//		(if on array, apply to elements instead of the array)
 function signalToJSX(signal: Signal<any>): Node {
 	const fragment = document.createDocumentFragment();
 	const privates = _privates.get(signal);
@@ -85,16 +73,18 @@ function signalToJSX(signal: Signal<any>): Node {
 	fragment.append(document.createComment(`${privates.id}-${generateId()}`));
 	// TODO: mieux faire expression
 	// TODO: factoriser ça avec emit
-	const node = isValidNode(signal.value) ? signal.value : document.createTextNode("" + signal.value);
-	fragment.append(node);
+	const node = valueToNode(signal.value);
 	if (node instanceof DocumentFragment) {
-		privates.elements.push([...node.childNodes] as InDOMElement[]);
+		privates.elements.push(fragmentToFlatArray(node) as InDOMElement[]);
 	} else {
 		privates.elements.push(node);
 	}
+	fragment.append(node); // this empties node if it is a DocumentFragment
 	return fragment;
 }
 
+// TODO do I want this?
+//	Maybe: <Input />, <TextArea />, <Button />...
 function bind(element: HTMLElement, signal: Signal<any>): Node {
 	const node = document.createDocumentFragment();
 	const privates = _privates.get(signal);
@@ -126,7 +116,6 @@ type SignalPrivates<Type> = {
 const _signals = new Map<string, Signal<any>>();
 const _privates = new WeakMap<Signal<any>, SignalPrivates<any>>();
 const _elements = new Map<string, Text | HTMLElement>();
-const elementExpressions = new Map<Node, (value: any) => any>();
 
 export function createSignal<Type>(init: Type): Signal<Type> {
 	const signal = new Signal<Type>();
@@ -172,39 +161,26 @@ class Signal<Type> {
 	}
 }
 
-function fragmentToFlatArray(fragment: DocumentFragment): Node[] {
-	const array: Node[] = [];
-	(function convert(fragment: DocumentFragment) {
-		for (const child of fragment.children) {
-			if (child instanceof DocumentFragment) {
-				convert(child);
-			} else {
-				array.push(child);
-			}
-		}
-	})(fragment);
-	return array;
-}
-
 // TODO: mutate instead of replacing
 function _emit(source: Signal<any>) {
 	const privates = _privates.get(source);
 	if (!privates) return;
 
-	const { value } = privates;
 	for (let i = 0; i < privates.elements.length; i++) {
 		let element = privates.elements[i];
 		if (Array.isArray(element)) {
 			let tmp = element.pop();
 			if (tmp === undefined) return;
-			// TODO en profiter pour faire le cleanup ?
-			for (const child of element) child.remove();
+			for (const child of element) {
+				removeRecursively(child);
+				child.remove();
+			}
 			element = tmp;
 		}
 
 		// TODO attribute values
 
-		let node: ValidNode = isValidNode(value) ? value : document.createTextNode("" + value);
+		const node = valueToNode(source.value);
 		if (node instanceof DocumentFragment) {
 			privates.elements[i] = fragmentToFlatArray(node) as InDOMElement[];
 		} else {
@@ -226,8 +202,6 @@ const generateId = (() => {
 /*******************************
  *   DEPENDENCY TREE CONTROL   *
  *******************************/
-
-// TODO: garbage collection
 
 // TODO supprimer de façon asynchrone
 //      (Pour éviter par exemple de bloquer le render d'une page en supprimant l'ancienne)
@@ -282,68 +256,3 @@ function _removeListener(source: Signal<any>, listener: Signal<any>) {
 	}
 	_enforceLifeTime(source);
 }
-
-/*************
- *   TESTS   *
- *************/
-
-function CommentElement() {
-	return document.createComment("");
-}
-
-type ShowProps = {
-	if: Signal<any>;
-	children: JSX.Element | JSX.Element[];
-	fallback?: JSX.Element;
-};
-
-function Show(props: ShowProps) {
-	return (
-		<>
-			{deriveSignal(() => {
-				if (!props.if.value) return <CommentElement />;
-				if (!Array.isArray(props.children)) return props.children;
-				return <>{...props.children}</>;
-			}, [props.if])}
-		</>
-	);
-}
-
-// TODO: typer les signaux
-type ForProps = {
-	each: Signal<any>; // TODO: valeur non-signal ?
-	children: (signal: Signal<any>) => Node[];
-};
-
-function For() {}
-
-function Counter() {
-	const count = createSignal(0);
-	const increment = () => count.value++;
-	return <button onClick={increment}>{count}</button>;
-}
-
-function MaxCounter() {
-	const count = createSignal(0);
-	const isHigh = deriveSignal(() => count.value > 9, [count]);
-	const increment = () => count.value++;
-	return <button onClick={increment}>{count}</button>;
-}
-
-function Input() {
-	const input = createSignal("");
-	return <input bind={input} />;
-}
-
-const bool = createSignal(false);
-
-document.body.append(
-	<>
-		{/* <MaxCounter />
-		<Input /> */}
-		<button onClick={() => (bool.value = !bool.value)}>Toggle</button>
-		<Show if={bool}>
-			<div>AA</div>
-		</Show>
-	</>
-);

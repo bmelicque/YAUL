@@ -4,11 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsc --watch"
+    "dev": "esbuild ./src/index.tsx --bundle --minify --outfile=/_dist/out.js --target=es5 --watch",
+    "build": "esbuild ./src/signal.tsx --bundle --minify --outfile=/_dist/out.js --target=es5"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "esbuild": "^0.18.6"
   }
 }
