@@ -1,4 +1,5 @@
-import { InDOMElement, fragmentToFlatArray, valueToNode } from "./lib/dom";
+import { For, Show } from "./components";
+import { InDOMElement, NodeList, toNode, updateDOM } from "./lib/dom";
 
 // TODO:
 //	- signals in attributes
@@ -28,11 +29,21 @@ declare global {
 	}
 }
 
+export const attributeToProperty: { [key: string]: string } = {};
+
 export function jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
 	if (tag === jsx.Fragments) {
 		return jsx.Fragments(null, ...children);
 	}
 	if (typeof tag === "function") {
+		if (tag === Show) {
+			console.log("jsx - when", properties.when);
+			// TODO add cb
+			//	check new and old state
+		}
+		if (tag === For) {
+			console.log("for!!");
+		}
 		return tag(Object.assign(properties ?? {}, { children }));
 	}
 	const element = document.createElement(tag);
@@ -42,6 +53,7 @@ export function jsx(tag: string | JSX.Component, properties: { [key: string]: an
 	}
 	if (!properties) return element;
 
+	// TODO remove this, just use value/onchange
 	if (properties.bind instanceof Signal) {
 		bind(element, properties.bind);
 		delete properties.bind;
@@ -49,9 +61,30 @@ export function jsx(tag: string | JSX.Component, properties: { [key: string]: an
 	for (const key in properties) {
 		if (key.startsWith("on")) {
 			element.addEventListener(key.slice(2).toLowerCase(), properties[key]);
-		} else {
-			element.setAttribute(key, "" + properties[key]);
+			continue;
 		}
+		const value = properties[key];
+		if (value instanceof Signal) {
+			// TODO add signal-comment
+			// TODO bad new: attribute not always in sync with property
+			//		keep track of {[nodeName]: key} on the fly?
+			const attribute = document.createAttribute(key);
+			attribute.nodeValue = value.value;
+			attributeToProperty[attribute.nodeName] = key;
+			element.setAttributeNode(attribute);
+			_privates.get(value)?.nodes.push(attribute);
+			// element.setAttribute(key, "" + value.value);
+			// const attributes = _privates.get(value);
+			// if (!attributes) continue;
+			// attributes.elementAttributes ??= new WeakMap();
+			// if (!attributes.elementAttributes.has(element)) {
+			// 	attributes.elementAttributes.set(element, [key]);
+			// } else {
+			// 	attributes.elementAttributes.get(element)?.push(key);
+			// }
+			continue;
+		}
+		element.setAttribute(key, "" + properties[key]);
 	}
 	return element;
 }
@@ -71,15 +104,15 @@ function signalToJSX(signal: Signal<any>): Node {
 	if (!privates) return fragment;
 
 	fragment.append(document.createComment(`${privates.id}-${generateId()}`));
-	// TODO: mieux faire expression
-	// TODO: factoriser ça avec emit
-	const node = valueToNode(signal.value);
-	if (node instanceof DocumentFragment) {
-		privates.elements.push(fragmentToFlatArray(node) as InDOMElement[]);
+	const node = toNode(signal.value);
+	privates.nodes.push(node);
+	if (Array.isArray(node)) {
+		for (const subnode of node) {
+			fragment.append(subnode);
+		}
 	} else {
-		privates.elements.push(node);
+		fragment.append(node);
 	}
-	fragment.append(node); // this empties node if it is a DocumentFragment
 	return fragment;
 }
 
@@ -94,7 +127,7 @@ function bind(element: HTMLElement, signal: Signal<any>): Node {
 	element.innerText = privates.value;
 	// TODO: mettre le bon type d'évènement
 	element.addEventListener("input", (e) => (signal.value = (e.currentTarget as any)?.value));
-	privates.elements.push(element);
+	privates.nodes.push(element);
 	node.append(element);
 	return node;
 }
@@ -109,8 +142,8 @@ type SignalPrivates<Type> = {
 	value: Type;
 	dependencies?: Signal<any>[];
 	listeners: Signal<any>[];
-	elements: (InDOMElement | InDOMElement[])[]; // Y inclure Element[] pour les fragments
-	elementExpressions?: Map<HTMLElement, (value: any) => any>; // TODO
+	nodes: (Node | NodeList)[];
+	elementAttributes?: WeakMap<InDOMElement, string[]>;
 };
 
 const _signals = new Map<string, Signal<any>>();
@@ -125,7 +158,7 @@ export function createSignal<Type>(init: Type): Signal<Type> {
 		id,
 		value: init,
 		listeners: [],
-		elements: [],
+		nodes: [],
 	});
 	return signal;
 }
@@ -140,7 +173,7 @@ export function deriveSignal<Type>(expression: () => Type, dependencies: Signal<
 		value: expression(),
 		dependencies,
 		listeners: [],
-		elements: [],
+		nodes: [],
 	});
 	for (const dependency of dependencies) {
 		_privates.get(dependency)?.listeners.push(signal);
@@ -154,40 +187,18 @@ class Signal<Type> {
 	}
 
 	set value(value: Type) {
-		if (_privates.get(this)) {
-			_privates.get(this)!.value = value;
-		}
+		const privates = _privates.get(this);
+		if (privates) privates.value = value;
 		_emit(this);
 	}
 }
 
-// TODO: mutate instead of replacing
 function _emit(source: Signal<any>) {
 	const privates = _privates.get(source);
 	if (!privates) return;
 
-	for (let i = 0; i < privates.elements.length; i++) {
-		let element = privates.elements[i];
-		if (Array.isArray(element)) {
-			let tmp = element.pop();
-			if (tmp === undefined) return;
-			for (const child of element) {
-				removeRecursively(child);
-				child.remove();
-			}
-			element = tmp;
-		}
-
-		// TODO attribute values
-
-		const node = valueToNode(source.value);
-		if (node instanceof DocumentFragment) {
-			privates.elements[i] = fragmentToFlatArray(node) as InDOMElement[];
-		} else {
-			privates.elements[i] = node;
-		}
-		// TODO en profiter pour faire le cleanup
-		element.replaceWith(node); // this empties DocumentFragments
+	for (let i = 0; i < privates.nodes.length; i++) {
+		privates.nodes[i] = updateDOM(privates.nodes[i], source.value);
 	}
 	for (const listener of privates.listeners) {
 		listener.value = _privates.get(listener)?.expression?.();
@@ -223,7 +234,7 @@ function removeElement(id: string) {
 	const signalId = id.split("-")[0];
 	const signal = _signals.get(signalId);
 	if (!signal) return;
-	const elements = _privates.get(signal)?.elements;
+	const elements = _privates.get(signal)?.nodes;
 	if (!elements) return;
 	for (let i = 0; i < elements.length; i++) {
 		if (elements[i] === element) {
@@ -236,7 +247,7 @@ function removeElement(id: string) {
 
 function _enforceLifeTime(signal: Signal<any>) {
 	const privates = _privates.get(signal);
-	if (!privates || privates.elements.length || privates.listeners.length) return;
+	if (!privates || privates.nodes.length || privates.listeners.length) return;
 
 	_signals.delete(privates.id);
 	if (!privates.dependencies) return;

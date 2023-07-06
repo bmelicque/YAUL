@@ -7,21 +7,23 @@ function CommentElement() {
 }
 
 type ShowProps = {
-	if: Signal<any>;
+	when: Signal<any>;
 	children: JSX.Element | JSX.Element[];
 	fallback?: JSX.Element;
 };
 
 export function Show(props: ShowProps) {
-	return (
-		<>
-			{deriveSignal(() => {
-				if (!props.if.value) return <CommentElement />;
-				if (!Array.isArray(props.children)) return props.children;
-				return <>{...props.children}</>;
-			}, [props.if])}
-		</>
+	const signal = deriveSignal(
+		(() => {
+			const falsy = <CommentElement />;
+			const truthy = Array.isArray(props.children) ? <>{...props.children}</> : props.children;
+			return () => {
+				return props.when.value ? truthy : falsy;
+			};
+		})(),
+		[props.when]
 	);
+	return <>{signal}</>;
 }
 
 // TODO: typer les signaux

@@ -12,27 +12,36 @@ let nextId = 0;
 const todos = createSignal<Todo[]>([]);
 
 function addTodo() {
-	const input = document.getElementById("input");
-	if (!(input instanceof HTMLInputElement)) return;
-
-	const description = input.value ?? "";
-	input.value = "";
-
 	todos.value.push({
 		id: nextId++,
-		description,
+		description: input.value,
 		done: false,
 	});
 	todos.value = todos.value;
+	input.value = "";
 }
 
 function removeTodo(id: number) {
 	todos.value = todos.value.filter((value) => value.id !== id);
 }
 
+const input = createSignal("");
+
+function Input() {
+	const onInput = (e: Event) => {
+		input.value = (e.currentTarget as HTMLInputElement).value;
+	};
+
+	return (
+		<input onInput={onInput} value={input}>
+			{input}
+		</input>
+	);
+}
+
 document.body.append(
 	<div>
-		<input id="input" />
+		<Input />
 		<button onClick={addTodo}>Add</button>
 		<For of={todos}>
 			{(todo) => (

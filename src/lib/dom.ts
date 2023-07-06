@@ -1,3 +1,5 @@
+import { attributeToProperty } from "../signal";
+
 export type InDOMElement = HTMLElement | Comment | Text;
 export type ValidNode = InDOMElement | DocumentFragment;
 
@@ -70,12 +72,8 @@ export function toNode(value: any): Node | NodeList {
 	return new Text("" + value);
 }
 
-function updateDOM(target: Node | NodeList, value: any) {
-	if (Array.isArray(target)) {
-		updateMany(target, value);
-	} else {
-		updateOne(target, value);
-	}
+export function updateDOM(target: Node | NodeList, value: any) {
+	return Array.isArray(target) ? updateMany(target, value) : updateOne(target, value);
 }
 
 /**
@@ -87,12 +85,12 @@ function updateDOM(target: Node | NodeList, value: any) {
  * @returns If the node's value as updated, returns nothing. If it was replaced,
  * returns the new node(s).
  */
-function updateMany(nodes: NodeList, value: any): Node | Node[] | undefined {
-	if (nodes === value) return;
+function updateMany(nodes: NodeList, value: any): Node | NodeList {
+	if (nodes === value) return nodes;
 	if (!Array.isArray(value)) {
 		const first = nodes.shift()!;
 		const parent = first.parentNode;
-		if (!parent) return;
+		if (!parent) return nodes;
 		for (const node of nodes) {
 			parent.removeChild(node);
 		}
@@ -114,7 +112,7 @@ function updateMany(nodes: NodeList, value: any): Node | Node[] | undefined {
 		nodes[i].parentNode?.removeChild(nodes[i]);
 	}
 	for (let i = min; i < value.length; i++) {
-		const node = toNode(value);
+		const node = toNode(value[i]);
 		insertAfter(node, res[res.length - 1]);
 		if (Array.isArray(node)) {
 			// TODO shouldn't happen?
@@ -123,6 +121,8 @@ function updateMany(nodes: NodeList, value: any): Node | Node[] | undefined {
 			res.push(node);
 		}
 	}
+	// final length is max(nodes.length, values.length)
+	// nodes being a NodeList, res contains at least one element
 	return res as NodeList;
 }
 
@@ -132,26 +132,26 @@ function updateMany(nodes: NodeList, value: any): Node | Node[] | undefined {
  *
  * @throws If the value is an object that is neither an array or a DOM node
  *
- * @returns If the node's value as updated, returns nothing. If it was replaced,
- * returns the new node(s).
+ * @returns The updated node
  */
-function updateOne(node: Node, value: any): Node | Node[] | undefined {
-	if (value === node) return;
+function updateOne(node: Node, value: any): Node | NodeList {
+	if (value === node) return node;
 	if (Array.isArray(value)) {
 		return replaceNode(toNode(value), node);
 	}
 	switch (node.nodeType) {
 		case Node.ATTRIBUTE_NODE:
 			node.nodeValue = value;
-			return;
+			updateOwnerProperty(node as Attr, value);
+			return node;
 		case Node.TEXT_NODE:
 			if (typeof value !== "object") {
 				node.nodeValue = value;
-				return;
+				return node;
 			}
 			return replaceNode(toNode(value), node);
 		case Node.COMMENT_NODE:
-			if (value === null) return;
+			if (value === null) return node;
 			return replaceNode(toNode(value), node);
 		default:
 			// default also handles node values
@@ -159,18 +159,36 @@ function updateOne(node: Node, value: any): Node | Node[] | undefined {
 	}
 }
 
-// TODO: make sure there's always at least one
+/**
+ * Updates an attribute owner's corresponding property.
+ *
+ * For example, passing a "value" attribute node will update owner.value
+ */
+function updateOwnerProperty(attr: Attr, value: any): void {
+	const owner = attr.ownerElement;
+	if (!owner) return;
+	const prop = attributeToProperty[attr.nodeName];
+	if (owner.hasAttribute(prop)) {
+		(owner as any)[prop] = value;
+	}
+}
+
+/**
+ * Removes a node from the DOM and replaces it with a single node or a list of at least
+ * one node.
+ *
+ * @returns The inserted node(s).
+ */
 function replaceNode(node: Node, old: Node): Node;
-function replaceNode(node: Node[], old: Node): Node[];
 function replaceNode(node: NodeList, old: Node): NodeList;
-function replaceNode(node: Node | Node[], old: Node): Node | Node[];
-function replaceNode(node: Node | Node[], old: Node): Node | Node[] {
+function replaceNode(node: Node | NodeList, old: Node): Node | NodeList;
+function replaceNode(node: Node | NodeList, old: Node): Node | NodeList {
 	if (!Array.isArray(node)) {
 		old.parentNode?.replaceChild(node, old);
 		return node;
 	}
-	if (!node.length) return node;
-	const last = node.pop()!;
+	const last = node.pop();
+	if (!last) throw new Error("Internal error: tried to insert an empty list of node");
 	old.parentNode?.replaceChild(last, old);
 	for (const child of node) {
 		old.parentNode?.insertBefore(child, last);
