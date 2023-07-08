@@ -1,36 +1,95 @@
-import { attributeToProperty } from "../signal";
-
-export type InDOMElement = HTMLElement | Comment | Text;
-export type ValidNode = InDOMElement | DocumentFragment;
+import { Signal, _privates, generateId } from "./signal";
 
 /**
  * A non-empty list of consecutive nodes
  */
 export type NodeList = [Node, ...Node[]];
 
-export function isValidNode(value: any): value is ValidNode {
-	if (typeof value !== "object") return false;
-	if (value instanceof HTMLElement) return true;
-	if (value instanceof Comment) return true;
-	if (value instanceof Text) return true;
-	if (value instanceof DocumentFragment) return true;
-	return false;
+declare global {
+	namespace JSX {
+		type Element = Node;
+
+		interface ElementChildrenAttribute {
+			children: {};
+		}
+
+		interface IntrinsicElements extends IntrinsicElementsMap {}
+
+		// TODO
+		type IntrinsicElementsMap = {
+			[K in keyof HTMLElementTagNameMap]: {
+				[k: string]: any;
+			};
+		};
+
+		interface Component {
+			(properties?: { [key: string]: any }, ...children: Node[]): Node;
+		}
+	}
 }
 
-export function valueToNode(value: any): ValidNode {
-	if (!Array.isArray(value)) {
-		return isValidNode(value) ? value : document.createTextNode("" + value);
-	}
+export const attributeToProperty: { [key: string]: string } = {};
 
-	if (!value.length) {
-		return document.createComment("");
+export function jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
+	if (tag === jsx.Fragments) {
+		return jsx.Fragments(null, ...children);
 	}
+	if (typeof tag === "function") {
+		return tag(Object.assign(properties ?? {}, { children }));
+	}
+	const element = document.createElement(tag);
+	for (let child of children) {
+		if (child instanceof Signal) child = signalToJSX(child);
+		element.append(child);
+	}
+	if (!properties) return element;
 
-	const node = document.createDocumentFragment();
-	for (const el of value) {
-		node.append(isValidNode(el) ? el : document.createTextNode("" + el));
+	for (const key in properties) {
+		if (key.startsWith("on")) {
+			element.addEventListener(key.slice(2).toLowerCase(), properties[key]);
+			continue;
+		}
+		const value = properties[key];
+		if (value instanceof Signal) {
+			// TODO add signal-comment
+			const attribute = document.createAttribute(key);
+			attribute.nodeValue = value.value;
+			attributeToProperty[attribute.nodeName] = key;
+			element.setAttributeNode(attribute);
+			_privates.get(value)?.nodes.push(attribute);
+			continue;
+		}
+		element.setAttribute(key, "" + properties[key]);
 	}
-	return node;
+	return element;
+}
+
+jsx.Fragments = function (_: any, ...children: Node[]): Node {
+	const fragment = new DocumentFragment();
+	for (let child of children) {
+		if (child instanceof Signal) child = signalToJSX(child);
+		fragment.append(child);
+	}
+	return fragment;
+};
+
+function signalToJSX(signal: Signal<any>): Node {
+	const fragment = document.createDocumentFragment();
+	const privates = _privates.get(signal);
+	if (!privates) return fragment;
+
+	fragment.append(document.createComment(`${privates.id}-${generateId()}`));
+	const node = toNode(signal.value);
+	privates.nodes.push(node);
+	if (Array.isArray(node)) {
+		// node.forEach(fragment.append)
+		for (const subnode of node) {
+			fragment.append(subnode);
+		}
+	} else {
+		fragment.append(node);
+	}
+	return fragment;
 }
 
 /**
@@ -197,36 +256,10 @@ function replaceNode(node: Node | NodeList, old: Node): Node | NodeList {
 	return node;
 }
 
-function insertBefore(node: Node | NodeList, target: Node) {
-	if (!Array.isArray(node)) return target.parentNode?.insertBefore(node, target);
-	for (const child of node) {
-		target.parentNode?.insertBefore(child, target);
-	}
-}
-
 function insertAfter(node: Node | NodeList, target: Node) {
 	if (!Array.isArray(node)) return target.parentNode?.insertBefore(node, target.nextSibling);
 	const next = target.nextSibling;
 	for (const child of node) {
 		target.parentNode?.insertBefore(child, next);
 	}
-}
-
-class Flattener {
-	array: Node[] = [];
-
-	flatten(fragment: DocumentFragment) {
-		for (const child of fragment.children) {
-			if (child instanceof DocumentFragment) {
-				this.flatten(child);
-			} else {
-				this.array.push(child);
-			}
-		}
-		return this.array;
-	}
-}
-
-export function fragmentToFlatArray(fragment: DocumentFragment) {
-	return new Flattener().flatten(fragment);
 }

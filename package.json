@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "test": "esbuild ./src/test.ts --bundle --minify --outfile=/_dist/test.js --target=es6",
     "dev": "esbuild ./src/index.tsx --bundle --minify --outfile=/_dist/out.js --target=es6 --watch",
-    "build": "esbuild ./src/signal.tsx --bundle --minify --outfile=/_dist/out.js --target=es6"
+    "build": "esbuild ./src/index.tsx --bundle --minify --outfile=/_dist/out.js --target=es6"
   },
   "author": "",
   "license": "ISC",

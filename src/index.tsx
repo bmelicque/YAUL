@@ -1,55 +1,60 @@
-import { For } from "./components";
-import { createSignal, jsx } from "./signal";
+import { jsx } from "./dom";
+import { createSignal } from "./signal";
+import { For, Show } from "./components";
 
-type Todo = {
-	id: number;
-	description: string;
-	done: boolean;
-};
+export { jsx } from "./dom";
+export { createSignal, deriveSignal } from "./signal";
+export { For, Show } from "./components";
 
-let nextId = 0;
+// type Todo = {
+// 	id: number;
+// 	description: string;
+// 	done: boolean;
+// };
 
-const todos = createSignal<Todo[]>([]);
+// let nextId = 0;
 
-function addTodo() {
-	todos.value.push({
-		id: nextId++,
-		description: input.value,
-		done: false,
-	});
-	todos.value = todos.value;
-	input.value = "";
-}
+// const todos = createSignal<Todo[]>([]);
 
-function removeTodo(id: number) {
-	todos.value = todos.value.filter((value) => value.id !== id);
-}
+// function addTodo() {
+// 	todos.value.push({
+// 		id: nextId++,
+// 		description: input.value,
+// 		done: false,
+// 	});
+// 	todos.value = todos.value;
+// 	input.value = "";
+// }
 
-const input = createSignal("");
+// function removeTodo(id: number) {
+// 	todos.value = todos.value.filter((value) => value.id !== id);
+// }
 
-function Input() {
-	const onInput = (e: Event) => {
-		input.value = (e.currentTarget as HTMLInputElement).value;
-	};
+// const input = createSignal("");
 
-	return (
-		<input onInput={onInput} value={input}>
-			{input}
-		</input>
-	);
-}
+// function Input() {
+// 	const onInput = (e: Event) => {
+// 		input.value = (e.currentTarget as HTMLInputElement).value;
+// 	};
 
-document.body.append(
-	<div>
-		<Input />
-		<button onClick={addTodo}>Add</button>
-		<For of={todos}>
-			{(todo) => (
-				<div>
-					{todo.description}
-					<button onClick={() => removeTodo(todo.id)}>Remove</button>
-				</div>
-			)}
-		</For>
-	</div>
-);
+// 	return (
+// 		<input onInput={onInput} value={input}>
+// 			{input}
+// 		</input>
+// 	);
+// }
+
+// document.body.append(
+// 	<div>
+// 		<Input />
+// 		<button onClick={addTodo}>Add</button>
+// 		<For of={todos}>
+// 			{(todo) => (
+// 				<div>
+// 					{todo.description}
+// 					<button onClick={() => removeTodo(todo.id)}>Remove</button>
+// 				</div>
+// 			)}
+// 		</For>
+// 	</div>
+// );

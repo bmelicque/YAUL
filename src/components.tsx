@@ -1,4 +1,5 @@
-import { deriveSignal, jsx } from "./signal";
+import { deriveSignal } from "./signal";
+import { jsx } from "./dom";
 
 type Signal<Type> = ReturnType<typeof deriveSignal<Type>>;
 
