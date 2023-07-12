@@ -1,8 +1,6 @@
-import { NodeList, toNode, updateDOM } from "./dom";
+import { NodeList, updateDOM } from "./dom";
 
 // TODO:
-//	- signals in attributes
-//		(add comment above element)
 //	- css? tailwind?
 
 /***************
@@ -20,7 +18,6 @@ type SignalPrivates<Type> = {
 
 const _signals = new Map<string, Signal<any>>();
 export const _privates = new WeakMap<Signal<any>, SignalPrivates<any>>();
-const _elements = new Map<string, Text | HTMLElement>();
 
 export function createSignal<Type>(init: Type): Signal<Type> {
 	const signal = new Signal<Type>();
@@ -82,15 +79,15 @@ export const generateId = (() => {
 	return () => "" + _++;
 })();
 
-/*******************************
- *   DEPENDENCY TREE CONTROL   *
- *******************************/
+/********************************
+ *   CLEAN UP DEPENDENCY TREE   *
+ ********************************/
 
 // TODO supprimer de façon asynchrone
 //      (Pour éviter par exemple de bloquer le render d'une page en supprimant l'ancienne)
-function removeRecursively(node: Node) {
+export function cleanup(node: Node) {
 	for (const childNode of node.childNodes) {
-		removeRecursively(childNode);
+		cleanup(childNode);
 	}
 	if (node.nodeName === "#comment") {
 		const res = node.nodeValue?.trim().match(/^s-(\d+-\d+)$/);
@@ -100,20 +97,12 @@ function removeRecursively(node: Node) {
 }
 
 function removeElement(id: string) {
-	const element = _elements.get(id);
-	if (!element) return;
-
-	const signalId = id.split("-")[0];
+	const [signalId, elementIndex] = id.split("-")[0];
 	const signal = _signals.get(signalId);
 	if (!signal) return;
-	const elements = _privates.get(signal)?.nodes;
-	if (!elements) return;
-	for (let i = 0; i < elements.length; i++) {
-		if (elements[i] === element) {
-			elements.splice(i, 1);
-			break;
-		}
-	}
+	let index = parseInt(elementIndex);
+	if (Number.isNaN(index)) return;
+	_privates.get(signal)?.nodes.splice(index, 1);
 	_enforceLifeTime(signal);
 }
 

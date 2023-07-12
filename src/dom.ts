@@ -1,4 +1,4 @@
-import { Signal, _privates, generateId } from "./signal";
+import { Signal, _privates, cleanup } from "./signal";
 
 /**
  * A non-empty list of consecutive nodes
@@ -37,6 +37,7 @@ export function jsx(tag: string | JSX.Component, properties: { [key: string]: an
 	if (typeof tag === "function") {
 		return tag(Object.assign(properties ?? {}, { children }));
 	}
+	const fragment = document.createDocumentFragment();
 	const element = document.createElement(tag);
 	for (let child of children) {
 		if (child instanceof Signal) child = signalToJSX(child);
@@ -51,17 +52,21 @@ export function jsx(tag: string | JSX.Component, properties: { [key: string]: an
 		}
 		const value = properties[key];
 		if (value instanceof Signal) {
-			// TODO add signal-comment
+			const privates = _privates.get(value);
+			if (!privates) continue;
+			fragment.append(document.createComment(`${privates.id}-${privates.nodes.length}`));
+			privates.nodes.push(element);
 			const attribute = document.createAttribute(key);
 			attribute.nodeValue = value.value;
 			attributeToProperty[attribute.nodeName] = key;
 			element.setAttributeNode(attribute);
 			_privates.get(value)?.nodes.push(attribute);
-			continue;
+		} else {
+			element.setAttribute(key, "" + properties[key]);
 		}
-		element.setAttribute(key, "" + properties[key]);
 	}
-	return element;
+	fragment.append(element);
+	return fragment;
 }
 
 jsx.Fragments = function (_: any, ...children: Node[]): Node {
@@ -78,11 +83,10 @@ function signalToJSX(signal: Signal<any>): Node {
 	const privates = _privates.get(signal);
 	if (!privates) return fragment;
 
-	fragment.append(document.createComment(`${privates.id}-${generateId()}`));
+	fragment.append(document.createComment(`${privates.id}-${privates.nodes.length}`));
 	const node = toNode(signal.value);
 	privates.nodes.push(node);
 	if (Array.isArray(node)) {
-		// node.forEach(fragment.append)
 		for (const subnode of node) {
 			fragment.append(subnode);
 		}
@@ -124,7 +128,7 @@ export function toNode(value: any): Node | NodeList {
 
 	// TODO what about functions ?
 
-	if (typeof value === "object") {
+	if (typeof value === "object" || typeof value === "function") {
 		throw new Error("Objects are not valid elements.");
 	}
 
@@ -244,11 +248,13 @@ function replaceNode(node: Node | NodeList, old: Node): Node | NodeList;
 function replaceNode(node: Node | NodeList, old: Node): Node | NodeList {
 	if (!Array.isArray(node)) {
 		old.parentNode?.replaceChild(node, old);
+		cleanup(old);
 		return node;
 	}
 	const last = node.pop();
 	if (!last) throw new Error("Internal error: tried to insert an empty list of node");
 	old.parentNode?.replaceChild(last, old);
+	cleanup(old);
 	for (const child of node) {
 		old.parentNode?.insertBefore(child, last);
 	}
@@ -258,8 +264,7 @@ function replaceNode(node: Node | NodeList, old: Node): Node | NodeList {
 
 function insertAfter(node: Node | NodeList, target: Node) {
 	if (!Array.isArray(node)) return target.parentNode?.insertBefore(node, target.nextSibling);
-	const next = target.nextSibling;
 	for (const child of node) {
-		target.parentNode?.insertBefore(child, next);
+		target.parentNode?.insertBefore(child, target.nextSibling);
 	}
 }

@@ -1,7 +1,5 @@
-import { deriveSignal } from "./signal";
+import { Signal, deriveSignal } from "./signal";
 import { jsx } from "./dom";
-
-type Signal<Type> = ReturnType<typeof deriveSignal<Type>>;
 
 function CommentElement() {
 	return document.createComment("");
@@ -9,27 +7,26 @@ function CommentElement() {
 
 type ShowProps = {
 	when: Signal<any>;
-	children: JSX.Element | JSX.Element[];
+	children: string | JSX.Element | JSX.Element[];
 	fallback?: JSX.Element;
 };
 
 export function Show(props: ShowProps) {
-	const signal = deriveSignal(
-		(() => {
-			const falsy = <CommentElement />;
-			const truthy = Array.isArray(props.children) ? <>{...props.children}</> : props.children;
-			return () => {
-				return props.when.value ? truthy : falsy;
-			};
-		})(),
-		[props.when]
+	return (
+		<>
+			{deriveSignal(
+				(() => {
+					const placeholder = <CommentElement />;
+					return () => (props.when.value ? props.children : placeholder);
+				})(),
+				[props.when]
+			)}
+		</>
 	);
-	return <>{signal}</>;
 }
 
-// TODO: typer les signaux
 type ForProps<Type> = {
-	of: Signal<Type[]>; // TODO: valeur non-signal ?
+	of: Signal<Type[]>;
 	children: ((value: Type, index: number) => Node) | [(value: Type) => Node];
 };
 
