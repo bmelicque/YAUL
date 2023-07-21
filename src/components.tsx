@@ -1,10 +1,6 @@
 import { Signal, deriveSignal } from "./signal";
 import { jsx } from "./dom";
 
-function CommentElement() {
-	return document.createComment("");
-}
-
 type ShowProps = {
 	when: Signal<any>;
 	children: string | JSX.Element | JSX.Element[];
@@ -16,7 +12,7 @@ export function Show(props: ShowProps) {
 		<>
 			{deriveSignal(
 				(() => {
-					const placeholder = <CommentElement />;
+					const placeholder = new Comment("");
 					return () => (props.when.value ? props.children : placeholder);
 				})(),
 				[props.when]

@@ -74,10 +74,10 @@ function _emit(source: Signal<any>) {
 	}
 }
 
-export const generateId = (() => {
-	let _ = 0;
-	return () => "" + _++;
-})();
+export const generateId = (
+	(_: number) => () =>
+		"" + _++
+)(0);
 
 /********************************
  *   CLEAN UP DEPENDENCY TREE   *
@@ -97,7 +97,7 @@ export function cleanup(node: Node) {
 }
 
 function removeElement(id: string) {
-	const [signalId, elementIndex] = id.split("-")[0];
+	const [signalId, elementIndex] = id.split("-");
 	const signal = _signals.get(signalId);
 	if (!signal) return;
 	let index = parseInt(elementIndex);
@@ -120,11 +120,7 @@ function _enforceLifeTime(signal: Signal<any>) {
 function _removeListener(source: Signal<any>, listener: Signal<any>) {
 	const listeners = _privates.get(source)?.listeners;
 	if (!listeners) return;
-	for (let i = 0; i < listeners.length; i++) {
-		if (listeners[i] === listener) {
-			listeners.splice(i, 1);
-			break;
-		}
-	}
+	const i = listeners.indexOf(listener);
+	if (i > -1) listeners.splice(i, 1);
 	_enforceLifeTime(source);
 }

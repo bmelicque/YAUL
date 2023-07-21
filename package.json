@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "esbuild ./src/test.ts --bundle --minify --outfile=/_dist/test.js --target=es6",
-    "dev": "esbuild ./src/index.tsx --bundle --minify --outfile=/_dist/out.js --target=es6 --watch",
-    "build": "esbuild ./src/index.tsx --bundle --minify --outfile=/_dist/out.js --target=es6"
+    "dev": "esbuild ./src/index.tsx --bundle --outfile=/_dist/out.js --target=es6 --watch",
+    "build": "esbuild ./src/index.tsx --bundle --minify --outfile=/_dist/out.js --target=es2020"
   },
   "author": "",
   "license": "ISC",
