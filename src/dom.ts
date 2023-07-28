@@ -1,4 +1,4 @@
-import { Signal, _privates, cleanup } from "./signal";
+import { Signal, _privates, cleanup, generateId, owners } from "./signal";
 
 /**
  * A non-empty list of consecutive nodes
@@ -30,7 +30,25 @@ declare global {
 
 export const attributeToProperty: { [key: string]: string } = {};
 
+export const stack: string[] = [];
+
 export function jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
+	stack.unshift(generateId());
+	let el = _jsx(tag, properties, ...children);
+	const signals = owners.get(stack[0]);
+	if (signals) {
+		if (!(el instanceof DocumentFragment)) {
+			const fragment = new DocumentFragment();
+			fragment.append(el);
+			el = fragment;
+		}
+		(el as DocumentFragment).append(new Comment(stack[0]));
+	}
+	stack.shift();
+	return el;
+}
+
+function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
 	if (typeof tag === "function") {
 		return tag(Object.assign(properties ?? {}, { children }));
 	}
@@ -79,14 +97,9 @@ function signalToJSX(signal: Signal<any>): Node {
 
 	fragment.append(new Comment(`${privates.id}-${privates.nodes.length}`));
 	const node = toNode(signal.value);
+
 	privates.nodes.push(node);
-	if (Array.isArray(node)) {
-		for (const subnode of node) {
-			fragment.append(subnode);
-		}
-	} else {
-		fragment.append(node);
-	}
+	fragment.append(node);
 	return fragment;
 }
 
@@ -98,18 +111,9 @@ function signalToJSX(signal: Signal<any>): Node {
  *
  * @throws If the value is an object that is neither an array or a DOM node
  */
-export function toNode(value: any): Node | NodeList {
+export function toNode(value: any): Node {
 	if (Array.isArray(value)) {
-		const res: Node[] = [];
-		for (const el of value) {
-			const node = toNode(el);
-			if (Array.isArray(node)) {
-				res.push(...node);
-			} else {
-				res.push(node);
-			}
-		}
-		return res.length ? (res as NodeList) : new Comment("");
+		return new Text(value.join());
 	}
 
 	if (value === null) {
@@ -120,67 +124,11 @@ export function toNode(value: any): Node | NodeList {
 		return value;
 	}
 
-	// TODO what about functions ?
-
 	if (typeof value === "object" || typeof value === "function") {
-		throw new Error("Objects are not valid elements.");
+		throw new Error("Non-primitive signals are not valid as JSX children");
 	}
 
 	return new Text("" + value);
-}
-
-export function updateDOM(target: Node | NodeList, value: any) {
-	return Array.isArray(target) ? updateMany(target, value) : updateOne(target, value);
-}
-
-/**
- * Updates a list of DOM nodes with new values. If it cannot update a given node, it
- * will replace it instead.
- *
- * @throws If the value is an object that is neither an array or a DOM node
- *
- * @returns If the node's value as updated, returns nothing. If it was replaced,
- * returns the new node(s).
- */
-function updateMany(nodes: NodeList, value: any): Node | NodeList {
-	if (nodes === value) return nodes;
-	if (!Array.isArray(value)) {
-		const first = nodes.shift()!;
-		const parent = first.parentNode;
-		if (!parent) return nodes;
-		for (const node of nodes) {
-			parent.removeChild(node);
-		}
-		return replaceNode(toNode(value), first);
-	}
-
-	const min = Math.min(value.length, nodes.length);
-	const res: Node[] = [];
-	for (let i = 0; i < min; i++) {
-		const updated = updateOne(nodes[i], value[i]);
-		if (Array.isArray(updated)) {
-			// TODO shouldn't happen?
-			res.push(...updated);
-		} else {
-			res.push(updated ?? nodes[i]);
-		}
-	}
-	for (let i = min; i < nodes.length; i++) {
-		nodes[i].parentNode?.removeChild(nodes[i]);
-	}
-	for (let i = min; i < value.length; i++) {
-		const node = toNode(value[i]);
-		insertAfter(node, res[res.length - 1]);
-		if (Array.isArray(node)) {
-			// TODO shouldn't happen?
-			res.push(...node);
-		} else {
-			res.push(node);
-		}
-	}
-	// final length is max(nodes.length, values.length)
-	// nodes being a NodeList, res contains at least one element
-	return res as NodeList;
 }
 
 /**
@@ -191,18 +139,18 @@ function updateMany(nodes: NodeList, value: any): Node | NodeList {
  *
  * @returns The updated node
  */
-function updateOne(node: Node, value: any): Node | NodeList {
+export function updateNode(node: Node, value: any): Node {
 	if (value === node) return node;
-	if (Array.isArray(value)) {
-		return replaceNode(toNode(value), node);
-	}
 	switch (node.nodeType) {
 		case Node.ATTRIBUTE_NODE:
 			node.nodeValue = value;
 			updateOwnerProperty(node as Attr, value);
 			return node;
 		case Node.TEXT_NODE:
-			if (typeof value !== "object") {
+			if (Array.isArray(value)) {
+				node.nodeValue = value.join();
+				return node;
+			} else if (typeof value !== "object") {
 				node.nodeValue = value;
 				return node;
 			}
@@ -236,29 +184,25 @@ function updateOwnerProperty(attr: Attr, value: any): void {
  *
  * @returns The inserted node(s).
  */
-function replaceNode(node: Node, old: Node): Node;
-function replaceNode(node: NodeList, old: Node): NodeList;
-function replaceNode(node: Node | NodeList, old: Node): Node | NodeList;
-function replaceNode(node: Node | NodeList, old: Node): Node | NodeList {
-	if (!Array.isArray(node)) {
-		old.parentNode?.replaceChild(node, old);
-		cleanup(old);
-		return node;
-	}
-	const last = node.pop();
-	if (!last) throw new Error("Internal error: tried to insert an empty list of node");
-	old.parentNode?.replaceChild(last, old);
+export function replaceNode(node: Node, old: Node): Node {
+	old.parentNode?.replaceChild(node, old);
 	cleanup(old);
-	for (const child of node) {
-		old.parentNode?.insertBefore(child, last);
-	}
-	node.push(last);
 	return node;
 }
 
-function insertAfter(node: Node | NodeList, target: Node) {
-	if (!Array.isArray(node)) return target.parentNode?.insertBefore(node, target.nextSibling);
-	for (const child of node) {
-		target.parentNode?.insertBefore(child, target.nextSibling);
+/**
+ * Gets elements from a DocumentFragment and puts them into an array. Fragments are flattened.
+ */
+export function fragmentsToFlatArray(node: Node): Node[] {
+	if (!(node instanceof DocumentFragment)) {
+		return [node];
 	}
+
+	const array: Node[] = [];
+	for (const child of node.childNodes) {
+		for (const subnode of fragmentsToFlatArray(child)) {
+			array.push(node);
+		}
+	}
+	return array;
 }

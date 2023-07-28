@@ -1,4 +1,5 @@
-import { NodeList, updateDOM } from "./dom";
+import { ComponentHandler } from "./components";
+import { stack, updateNode } from "./dom";
 
 // TODO:
 //	- css? tailwind?
@@ -12,12 +13,15 @@ type SignalPrivates<Type> = {
 	expression?: () => Type;
 	value: Type;
 	dependencies?: Signal<any>[];
-	listeners: Signal<any>[];
-	nodes: (Node | NodeList)[];
+	derivedSignals: Signal<any>[];
+	componentHandlers?: ComponentHandler[];
+	nodes: Node[];
+	owner: string | undefined;
 };
 
 const _signals = new Map<string, Signal<any>>();
 export const _privates = new WeakMap<Signal<any>, SignalPrivates<any>>();
+export const owners = new Map<string, Signal<any>[]>();
 
 export function createSignal<Type>(init: Type): Signal<Type> {
 	const signal = new Signal<Type>();
@@ -26,8 +30,9 @@ export function createSignal<Type>(init: Type): Signal<Type> {
 	_privates.set(signal, {
 		id,
 		value: init,
-		listeners: [],
+		derivedSignals: [],
 		nodes: [],
+		owner: stack[0],
 	});
 	return signal;
 }
@@ -41,16 +46,24 @@ export function deriveSignal<Type>(expression: () => Type, dependencies: Signal<
 		expression,
 		value: expression(),
 		dependencies,
-		listeners: [],
+		derivedSignals: [],
 		nodes: [],
+		owner: stack[0],
 	});
 	for (const dependency of dependencies) {
-		_privates.get(dependency)?.listeners.push(signal);
+		_privates.get(dependency)?.derivedSignals.push(signal);
 	}
 	return signal;
 }
 
 export class Signal<Type> {
+	constructor() {
+		if (stack[0] !== undefined) {
+			if (!owners.has(stack[0])) owners.set(stack[0], [this]);
+			else owners.get(stack[0])?.push(this);
+		}
+	}
+
 	get value(): Type {
 		return _privates.get(this)?.value;
 	}
@@ -67,10 +80,15 @@ function _emit(source: Signal<any>) {
 	if (!privates) return;
 
 	for (let i = 0; i < privates.nodes.length; i++) {
-		privates.nodes[i] = updateDOM(privates.nodes[i], source.value);
+		privates.nodes[i] = updateNode(privates.nodes[i], source.value);
 	}
-	for (const listener of privates.listeners) {
-		listener.value = _privates.get(listener)?.expression?.();
+	for (const derivedSignal of privates.derivedSignals) {
+		derivedSignal.value = _privates.get(derivedSignal)?.expression?.();
+	}
+	if (privates.componentHandlers) {
+		for (const handler of privates.componentHandlers) {
+			handler.handle(source.value);
+		}
 	}
 }
 
@@ -108,7 +126,7 @@ function removeElement(id: string) {
 
 function _enforceLifeTime(signal: Signal<any>) {
 	const privates = _privates.get(signal);
-	if (!privates || privates.nodes.length || privates.listeners.length) return;
+	if (!privates || privates.nodes.length || privates.derivedSignals.length) return;
 
 	_signals.delete(privates.id);
 	if (!privates.dependencies) return;
@@ -118,7 +136,7 @@ function _enforceLifeTime(signal: Signal<any>) {
 }
 
 function _removeListener(source: Signal<any>, listener: Signal<any>) {
-	const listeners = _privates.get(source)?.listeners;
+	const listeners = _privates.get(source)?.derivedSignals;
 	if (!listeners) return;
 	const i = listeners.indexOf(listener);
 	if (i > -1) listeners.splice(i, 1);
