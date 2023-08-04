@@ -1,4 +1,4 @@
-import { Signal, _privates, cleanup, generateId, owners } from "./signal";
+import { $ID, $NODES, Signal, cleanup, generateId, owners } from "./signal";
 
 /**
  * A non-empty list of consecutive nodes
@@ -30,21 +30,24 @@ declare global {
 
 export const attributeToProperty: { [key: string]: string } = {};
 
-export const stack: string[] = [];
+export const stack: number[] = [];
+export function getOwner() {
+	return stack[stack.length - 1];
+}
 
 export function jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
-	stack.unshift(generateId());
+	const id = generateId();
+	stack.push(id);
 	let el = _jsx(tag, properties, ...children);
-	const signals = owners.get(stack[0]);
-	if (signals) {
+	if (owners.get(id)) {
 		if (!(el instanceof DocumentFragment)) {
-			const fragment = new DocumentFragment();
-			fragment.append(el);
-			el = fragment;
+			const tmp = new DocumentFragment();
+			tmp.append(el);
+			el = tmp;
 		}
-		(el as DocumentFragment).append(new Comment(stack[0]));
+		(el as DocumentFragment).append(new Comment(`y-stack=${id}`));
 	}
-	stack.shift();
+	stack.pop();
 	return el;
 }
 
@@ -60,22 +63,24 @@ function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, .
 	if (!properties) return element;
 
 	const fragment = new DocumentFragment();
+	const ids: number[] = [];
 	for (const key in properties) {
 		const value = properties[key];
 		if (key.startsWith("on")) {
 			element.addEventListener(key.slice(2).toLowerCase(), value);
 		} else if (value instanceof Signal) {
-			const privates = _privates.get(value);
-			if (!privates) continue;
-			fragment.append(new Comment(`${privates.id}-${privates.nodes.length}`));
+			ids.push(value[$ID]);
 			const attribute = document.createAttribute(key);
 			attribute.nodeValue = value.value;
 			attributeToProperty[attribute.nodeName] = key;
 			element.setAttributeNode(attribute);
-			_privates.get(value)?.nodes.push(attribute);
+			value[$NODES].push(attribute);
 		} else {
 			element.setAttribute(key, "" + value);
 		}
+	}
+	if (ids.length) {
+		fragment.append(new Comment(`y-signal=${ids.join("-")}`));
 	}
 	fragment.append(element);
 	return fragment;
@@ -92,13 +97,10 @@ jsx.Fragments = function ({ children }: { children: Node[] }): Node {
 
 function signalToJSX(signal: Signal<any>): Node {
 	const fragment = new DocumentFragment();
-	const privates = _privates.get(signal);
-	if (!privates) return fragment;
-
-	fragment.append(new Comment(`${privates.id}-${privates.nodes.length}`));
+	fragment.append(new Comment(`y-signal=${signal[$ID]}`));
 	const node = toNode(signal.value);
 
-	privates.nodes.push(node);
+	signal[$NODES].push(node);
 	fragment.append(node);
 	return fragment;
 }

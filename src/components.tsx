@@ -1,4 +1,4 @@
-import { Signal, _privates, deriveSignal } from "./signal";
+import { $COMPONENT_HANDLERS, $VALUE, Signal, deriveSignal } from "./signal";
 import { fragmentsToFlatArray, jsx, replaceNode, toNode } from "./dom";
 
 export type ComponentHandler = {
@@ -44,15 +44,13 @@ class Toggler implements ComponentHandler {
 }
 
 export function Show(props: ShowProps): Node {
-	const p = _privates.get(props.when);
-	if (!p) return <></>;
-	const handler = new Toggler(!!p.value, props.children);
-	p.componentHandlers ??= [];
-	p.componentHandlers.push(handler);
+	const handler = new Toggler(!!props.when[$VALUE], props.children);
+	props.when[$COMPONENT_HANDLERS] ??= [];
+	props.when[$COMPONENT_HANDLERS].push(handler);
 	return handler.status ? handler.fragment : handler.comment;
 }
 
-type MapperCallback<Type> = (value: Type, index: number) => Node;
+type MapperCallback<Type> = (value: Signal<Type>, index: number) => Node;
 
 type ForProps<Type> = {
 	of: Signal<Type[]>;
@@ -60,65 +58,56 @@ type ForProps<Type> = {
 };
 
 class Mapper<Type> implements ComponentHandler {
-	previousValue: Type[] = [];
-	nodes: (Node | Node[])[] = [];
+	nodes: Node[] = [];
 	fn: MapperCallback<Type>;
 	end: Comment;
+	arraySignal: Signal<Type[]>;
+	signals: Signal<Type>[] = [];
 
-	constructor(fn: MapperCallback<Type>, end: Comment) {
+	constructor(arraySignal: Signal<Type[]>, fn: MapperCallback<Type>, end: Comment) {
+		this.arraySignal = arraySignal;
 		this.fn = fn;
 		this.end = end;
 	}
 
-	handle(array: Type[]) {
-		if (array === this.previousValue) return;
-		const min = Math.min(array.length, this.previousValue.length);
-		for (let i = 0; i < min; i++) {
-			if (array[i] === this.previousValue[i]) continue;
-
-			const node = this.fn(array[i], i);
-			const old = this.nodes[i];
-			if (Array.isArray(old)) {
-				const last = old.pop();
-				if (!last) continue;
-				for (const el of old) {
-					el.parentNode?.removeChild(el);
-				}
-				replaceNode(node, last);
-			} else {
-				replaceNode(node, old);
+	handle() {
+		if (this.nodes.length < this.arraySignal.value.length) {
+			for (let i = this.nodes.length; i < this.arraySignal.value.length; i++) {
+				const signal = deriveSignal(() => this.arraySignal.value[i], [this.arraySignal]);
+				this.signals.push(signal);
+				const comment = new Comment(`y0[${i}]`); // TODO right index
+				this.nodes.push(comment);
+				this.end.parentNode?.insertBefore(comment, this.end);
+				const node = this.fn(signal, i);
+				this.end.parentNode?.insertBefore(node, this.end);
 			}
-			this.nodes[i] = this.fn(array[i], i);
+			console.log(this.signals.map((signal) => ({ ...signal.value })));
+			return;
 		}
 
-		const spliced = this.nodes.splice(min);
-		for (const node of spliced) {
-			if (Array.isArray(node)) {
-				for (const subnode of node) {
-					subnode.parentNode?.removeChild(subnode);
-				}
-			} else {
-				node.parentNode?.removeChild(node);
+		if (this.arraySignal.value.length < this.nodes.length) {
+			let node = this.end.previousSibling;
+			const target = this.nodes[this.arraySignal.value.length];
+			while (node && node !== target) {
+				node.remove();
+				node = this.end.previousSibling;
 			}
-		}
-
-		for (let i = min; i < array.length; i++) {
-			const node = this.fn(array[i], i);
-			this.nodes.push(node instanceof DocumentFragment ? fragmentsToFlatArray(node) : node);
-			this.end.parentNode?.insertBefore(node, this.end);
+			for (const signal of this.signals.splice(this.arraySignal.value.length)) {
+				// TODO destroy signal
+			}
+			console.log(this.signals.map((signal) => ({ ...signal.value })));
+			return;
 		}
 	}
 }
 
 export function For<Type>(props: ForProps<Type>) {
 	const fragments = new DocumentFragment();
-	const p = _privates.get(props.of);
-	if (!p) return fragments;
 	const end = new Comment();
 	fragments.append(end);
-	const handler = new Mapper(Array.isArray(props.children) ? props.children[0] : props.children, end);
-	handler.handle(props.of.value);
-	p.componentHandlers ??= [];
-	p.componentHandlers.push(handler);
+	const handler = new Mapper(props.of, Array.isArray(props.children) ? props.children[0] : props.children, end);
+	handler.handle();
+	props.of[$COMPONENT_HANDLERS] ??= [];
+	props.of[$COMPONENT_HANDLERS].push(handler);
 	return fragments;
 }

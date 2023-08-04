@@ -60,8 +60,8 @@ document.body.append(
 			<For of={todos}>
 				{(todo) => (
 					<div>
-						{todo.description}
-						<button onClick={() => removeTodo(todo.id)}>Remove</button>
+						{todo.value.description}
+						<button onClick={() => removeTodo(todo.value.id)}>Remove</button>
 					</div>
 				)}
 			</For>
