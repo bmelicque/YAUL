@@ -8,6 +8,11 @@ import { getOwner, updateNode } from "./dom";
  *   SIGNALS   *
  ***************/
 
+export function isSignal(value: any): value is Signal<any> {
+	return value[$ID] !== undefined;
+}
+
+export const $SIGNAL = Symbol();
 export const $ID = Symbol("id");
 export const $EXPRESSION = Symbol("expression");
 export const $VALUE = Symbol("value");
@@ -45,10 +50,12 @@ export class Signal<Type> {
 	[$COMPONENT_HANDLERS]?: ComponentHandler[];
 
 	constructor(value: Type) {
-		Object.defineProperty(this, $ID, { value: generateId() });
-		Object.defineProperty(this, $OWNER, { value: getOwner() });
-		Object.defineProperty(this, $VALUE, { value, writable: true });
-		Object.defineProperty(this, $NODES, { value: [] });
+		Object.defineProperties(this, {
+			[$ID]: { value: generateId() },
+			[$OWNER]: { value: getOwner() },
+			[$VALUE]: { value, writable: true },
+			[$NODES]: { value: [] },
+		});
 
 		_signals.set(this[$ID], this);
 

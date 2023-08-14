@@ -1,4 +1,4 @@
-import { $ID, $NODES, Signal, cleanup, generateId, owners } from "./signal";
+import { $ID, $NODES, Signal, cleanup, generateId, isSignal, owners } from "./signal";
 
 /**
  * A non-empty list of consecutive nodes
@@ -57,7 +57,7 @@ function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, .
 	}
 	const element = document.createElement(tag);
 	for (let child of children) {
-		if (child instanceof Signal) child = signalToJSX(child);
+		if (isSignal(child)) child = signalToJSX(child);
 		element.append(child);
 	}
 	if (!properties) return element;
@@ -68,7 +68,7 @@ function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, .
 		const value = properties[key];
 		if (key.startsWith("on")) {
 			element.addEventListener(key.slice(2).toLowerCase(), value);
-		} else if (value instanceof Signal) {
+		} else if (isSignal(value)) {
 			ids.push(value[$ID]);
 			const attribute = document.createAttribute(key);
 			attribute.nodeValue = value.value;
@@ -89,7 +89,7 @@ function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, .
 jsx.Fragments = function ({ children }: { children: Node[] }): Node {
 	const fragment = new DocumentFragment();
 	for (let child of children) {
-		if (child instanceof Signal) child = signalToJSX(child);
+		if (isSignal(child)) child = signalToJSX(child);
 		fragment.append(child);
 	}
 	return fragment;
