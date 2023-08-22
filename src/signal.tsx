@@ -1,165 +1,224 @@
-import { ComponentHandler } from "./components";
-import { getOwner, updateNode } from "./dom";
+import { updateNode } from "./dom";
+import { listenContext, runWith } from "./context";
 
-// TODO:
-//	- css? tailwind?
-
-/***************
- *   SIGNALS   *
- ***************/
-
-export function isSignal(value: any): value is Signal<any> {
-	return value[$ID] !== undefined;
-}
-
-export const $SIGNAL = Symbol();
 export const $ID = Symbol("id");
-export const $EXPRESSION = Symbol("expression");
+export const $UPDATER = Symbol("updater");
 export const $VALUE = Symbol("value");
 export const $DEPENDENCIES = Symbol("dependencies");
-export const $DERIVED_SIGNALS = Symbol("derived");
 export const $COMPONENT_HANDLERS = Symbol("handlers");
 export const $NODES = Symbol("nodes");
 export const $OWNER = Symbol("owner");
+export const $LISTENERS = Symbol("listeners");
+export const $ADD_LISTENER = Symbol();
+export const $ADD_DEPENDENCY = Symbol();
+export const $ADD_NODE = Symbol();
+export const $EMIT = Symbol();
 
-const _signals = new Map<number, Signal<any>>();
-export const owners = new Map<number, Signal<any>[]>();
+type primitive = bigint | boolean | null | number | string | symbol | undefined;
 
-export function createSignal<Type>(init: Type): Signal<Type> {
-	return new Signal<Type>(init);
-}
-
-export function deriveSignal<Type>(expression: () => Type, dependencies: Signal<any>[]): Signal<Type> {
-	const signal = new Signal<Type>(expression());
-	Object.defineProperty(signal, $EXPRESSION, { value: expression });
-	Object.defineProperty(signal, $DEPENDENCIES, { value: dependencies });
-	for (const dependency of dependencies) {
-		addDerivedSignal(dependency, signal);
-	}
-	return signal;
-}
-
-export class Signal<Type> {
-	readonly [$ID]!: number;
-	readonly [$OWNER]!: number | undefined;
-	[$NODES]!: Node[]; // TODO: optionnal
-	[$VALUE]!: Type;
-	[$EXPRESSION]?: () => Type;
-	[$DEPENDENCIES]?: Signal<any>[];
-	[$DERIVED_SIGNALS]?: Signal<any>[];
-	[$COMPONENT_HANDLERS]?: ComponentHandler[];
-
-	constructor(value: Type) {
-		Object.defineProperties(this, {
-			[$ID]: { value: generateId() },
-			[$OWNER]: { value: getOwner() },
-			[$VALUE]: { value, writable: true },
-			[$NODES]: { value: [] },
-		});
-
-		_signals.set(this[$ID], this);
-
-		if (this[$OWNER] !== undefined) {
-			if (!owners.has(this[$OWNER])) owners.set(this[$OWNER], [this]);
-			else owners.get(this[$OWNER])?.push(this);
-		}
-	}
-
-	get value(): Type {
-		return this[$VALUE];
-	}
-
-	set value(value: Type) {
-		this[$VALUE] = value;
-		emit(this);
-	}
-}
-
-function addDerivedSignal(signal: Signal<any>, derived: Signal<any>) {
-	if (!signal[$DERIVED_SIGNALS]) Object.defineProperty(signal, $DERIVED_SIGNALS, { value: [derived] });
-	else signal[$DERIVED_SIGNALS].push(derived);
-}
-
-function emit(source: Signal<any>) {
-	for (let i = 0; i < source[$NODES].length; i++) {
-		source[$NODES][i] = updateNode(source[$NODES][i], source.value);
-	}
-	if (source[$DERIVED_SIGNALS])
-		for (const derivedSignal of source[$DERIVED_SIGNALS]) {
-			derivedSignal.value = derivedSignal[$EXPRESSION]?.();
-		}
-	if (source[$COMPONENT_HANDLERS]) {
-		for (const handler of source[$COMPONENT_HANDLERS]) {
-			handler.handle(source[$VALUE]);
-		}
-	}
-}
-
-function destroySignal(signal: Signal<any>) {
-	_signals.delete(signal[$ID]);
-	const dependencies = signal[$DEPENDENCIES];
-	if (dependencies) {
-		for (const dependency of dependencies) {
-			_removeListener(dependency, signal);
-		}
-	}
-}
+type Reactive<Type> = Type extends {} ? { [K in keyof Type]: Reactive<Type[K]> } & Signal<Type> : Type & Signal<Type>;
+// type Reactive<Type> = Type;
 
 export const generateId = (
 	(_: number) => () =>
 		_++
 )(0);
 
-/********************************
- *   CLEAN UP DEPENDENCY TREE   *
- ********************************/
-
-// TODO supprimer de façon asynchrone
-//      (Pour éviter par exemple de bloquer le render d'une page en supprimant l'ancienne)
-export function cleanup(node: Node) {
-	for (const childNode of node.childNodes) {
-		cleanup(childNode);
-	}
-	if (node.nodeName === "#comment") {
-		// TODO change algo:
-		//		startsWith y-
-		//		split("=")[1]
-		//		split("-")
-		//		if signal:
-		//			nextSibling, find in signal
-		//		if stack:
-		//			remove owner
-		// TODO try yX=[A, B] where X is either owner/component
-		const res = node.nodeValue?.trim().match(/^y-\w+=(\d+)$/);
-		if (!res) return;
-		return removeElement(res[1]);
-	}
+function isPrimitive(value: any): value is primitive {
+	return value === null || (typeof value !== "object" && typeof value !== "function");
 }
 
-function removeElement(id: string) {
-	const [signalId, elementIndex] = id.split("-");
-	const signal = _signals.get(parseInt(signalId));
-	if (!signal) return;
-	let index = parseInt(elementIndex);
-	if (Number.isNaN(index)) return;
-	signal[$NODES].splice(index, 1);
-	_enforceLifeTime(signal);
+function isObject(value: any): value is object {
+	return typeof value === "object" && value !== null;
 }
 
-function _enforceLifeTime(signal: Signal<any>) {
-	if (signal[$NODES].length || signal[$DERIVED_SIGNALS]?.length) return;
+// // TODO: see if still relevant; use instanceof Signal
+// // @ts-ignore
+// export function isSignal<Type>(value: Type): value is Signal<Type> {
+// 	return isObject(value) && (value as any)[$ID] !== undefined;
+// }
 
-	_signals.delete(signal[$ID]);
-	if (signal[$DEPENDENCIES])
-		for (const dependency of signal[$DEPENDENCIES]) {
-			_removeListener(dependency, signal);
+// @ts-ignore
+export function isSignal<Type>(value: Reactive<Type>): value is Signal<Type> {
+	return value instanceof Signal;
+}
+
+export class Signal<Type> {
+	readonly [$ID]!: number;
+	[$VALUE]!: Type;
+	[$LISTENERS]?: ((value: Type) => void)[];
+	[$NODES]?: Node[];
+
+	constructor(value: Type) {
+		Object.defineProperties(this, {
+			[$ID]: { value: generateId() },
+			[$VALUE]: { value, writable: true },
+		});
+	}
+
+	[Symbol.toPrimitive]() {
+		if (this[$VALUE] === null || (typeof this[$VALUE] !== "object" && typeof this[$VALUE] !== "function")) {
+			return this[$VALUE];
 		}
+		return this[$VALUE];
+	}
+
+	/**
+	 * Triggers listeners
+	 */
+	[$EMIT](): void {
+		console.log("---- EMITTING ----");
+		console.log("this: ", this, this[$LISTENERS], this[$VALUE]);
+
+		if (isObject(this[$VALUE])) {
+			for (const key in this[$VALUE]) {
+				console.log(key, this[$VALUE], this[$VALUE][key]);
+			}
+		}
+
+		if (this[$LISTENERS]) {
+			for (const listener of this[$LISTENERS]) {
+				listener(this[$VALUE]);
+			}
+		}
+
+		if (this[$NODES]) {
+			for (let i = 0; i < this[$NODES].length; i++) {
+				this[$NODES][i] = updateNode(this[$NODES][i], this[$VALUE]);
+			}
+		}
+	}
+
+	/**
+	 * Adds a new listener function that will be called on value update.
+	 * @param listener The function that will be called. No argument is given.
+	 */
+	[$ADD_LISTENER](listener: (value: Type) => void): void {
+		if (!this[$LISTENERS]) {
+			Object.defineProperty(this, $LISTENERS, { value: [listener] });
+		} else if (this[$LISTENERS].indexOf(listener) === -1) {
+			this[$LISTENERS].push(listener);
+		}
+	}
+
+	[$ADD_NODE](node: Node): void {
+		this[$NODES]?.push(node) ?? Object.defineProperty(this, $NODES, { value: [node] });
+	}
 }
 
-function _removeListener(source: Signal<any>, listener: Signal<any>) {
-	const derivedSignals = source[$DERIVED_SIGNALS];
-	if (!derivedSignals) return;
-	const i = derivedSignals.indexOf(listener);
-	if (i > -1) derivedSignals.splice(i, 1);
-	_enforceLifeTime(source);
+export class Computed<Type> extends Signal<Type> {
+	[$UPDATER]!: () => Type;
+	[$DEPENDENCIES]!: Signal<any>[];
+
+	constructor(expression: () => Type) {
+		super(undefined as any);
+		Object.defineProperties(this, {
+			[$UPDATER]: { value: () => ((this[$VALUE] = expression()), this[$EMIT]) },
+			[$DEPENDENCIES]: { value: [] },
+		});
+		// This next line will trigger attachement to dependencies. It needs this[$DEPENDENCIES] to be defined.
+		this[$VALUE] = runWith(this, expression);
+	}
 }
+
+const handler = {
+	get(target: Reactive<any>, prop: string | symbol) {
+		if (prop === Symbol.toPrimitive) {
+			console.log("get: ", target, target[prop]);
+
+			// return target[prop]();
+		}
+		if (target[prop] !== undefined) return target[prop];
+		listenContext(target);
+		const value = target[$VALUE][prop];
+		return typeof value === "function" ? value.bind(target[$VALUE]) : value;
+	},
+
+	set(target: any, prop: string | symbol, value: any): boolean {
+		if (prop === Symbol.toPrimitive) {
+			target[Symbol.toPrimitive] = value;
+			return true;
+		}
+		console.log("target ", target);
+		console.log("prop ", prop);
+		console.log("value ", value);
+
+		target[prop] !== undefined ? (target[prop] = value) : (target[$VALUE][prop][$VALUE] = value);
+		// Needs the new value to be set before emitting
+		target[$EMIT]();
+		return true;
+	},
+
+	deleteProperty(target: any, prop: string | symbol) {
+		// TODO: be ready to clean up
+		return delete target[prop];
+	},
+};
+
+export function createSignal<Type extends primitive>(value: Type) {
+	const p = new Proxy(new Signal(value), handler);
+	p[Symbol.toPrimitive] = function () {
+		return this[$VALUE];
+	};
+	return p as Type;
+}
+
+/**
+ * Creates a reactive store.
+ * @param init The inital value of the store, must be an object (functions will throw)
+ * @throws if the param is not an object
+ * @returns The reactive store, typed as the initial value
+ */
+export function createStore<Type extends object>(init: Type) {
+	if (!isObject(init)) {
+		throw new Error(); //TODO
+	}
+	const res: any = {};
+	for (const prop in init) {
+		const value = init[prop];
+		res[prop] = isObject(value) ? createStore(value) : isPrimitive(value) ? createSignal(value) : (undefined as never);
+	}
+	return new Proxy(new Signal(res), handler) as Type;
+}
+
+/**
+ * Creates a computed value. The source stores will be detected automatically.
+ * @param expression The expression that will be evaluated on updates. It should return the new value.
+ * @returns A reactive value that will update automatically
+ */
+export function createComputed<Type>(expression: () => Type) {
+	if (typeof expression !== "function") {
+		throw new Error(); // TODO
+	}
+	return new Proxy(new Computed(expression), handler) as Type;
+}
+
+/**
+ * Converts a signal to its value
+ * @param value The signal to unwrap
+ * @returns The signal's value
+ */
+// function unwrap<Type>(value: Reactive<Type>): Type {
+// 	// TODO handle arrays
+// 	if (!isSignal(value)) return value;
+// 	value = value[$VALUE];
+// 	if (isPrimitive(value)) return value;
+// 	const unwrapped: Type = { ...value };
+// 	for (const key in unwrapped) {
+// 		unwrapped[key] = unwrap(unwrapped[key] as any);
+// 	}
+// 	return unwrapped;
+// }
+
+// // ----- CONSOLE.LOG -----
+// // no more need for wrappers around primitives, just be new Proxy({[$VALUE], ...}) as new value.constructor()
+// const log = console.log;
+// console.log = function (...data: any[]) {
+// 	data = data.map(unwrap);
+// 	log(...data);
+// };
+// // -----------------------
+// // TODO
+// console.debug;
+// console.error;
+// //etc.

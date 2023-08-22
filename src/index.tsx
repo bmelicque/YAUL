@@ -1,10 +1,11 @@
 import { jsx } from "./dom";
-import { createSignal } from "./signal";
-import { For, Show } from "./components";
+import { createSignal } from "./signal-old";
+import { $ID, createStore } from "./signal";
+import { Show } from "./components";
 
 export { jsx } from "./dom";
-export { createSignal, deriveSignal } from "./signal";
-export { For, Show } from "./components";
+export { createSignal, deriveSignal } from "./signal-old"; // TODO
+export { Show } from "./components";
 
 type Todo = {
 	id: number;
@@ -14,23 +15,24 @@ type Todo = {
 
 let nextId = 0;
 
-const todos = createSignal<Todo[]>([]);
+const todos = createStore<Todo[]>([]);
 
 function addTodo() {
-	todos.value.push({
+	todos.push({
 		id: nextId++,
 		description: input.value,
 		done: false,
 	});
-	todos.value = todos.value;
 	input.value = "";
+	console.log(todos);
 }
 
 function removeTodo(id: number) {
-	todos.value = todos.value.filter((value) => value.id !== id);
+	const index = todos.findIndex((value) => value.id === id);
+	todos.splice(index, 1);
 }
 
-const input = createSignal("");
+const input = createStore({ value: "" });
 
 function Input() {
 	const onInput = (e: Event) => {
@@ -38,33 +40,43 @@ function Input() {
 	};
 
 	return (
-		<input onInput={onInput} value={input}>
-			{input}
+		<input onInput={onInput} value={input.value}>
+			{input.value}
 		</input>
 	);
 }
 
-const bool = createSignal(true);
+const bool = createStore({ value: false });
+console.log(bool.value[Symbol.toPrimitive]());
+console.log(bool, bool.value, !bool.value);
 
 document.body.append(
 	<>
 		<div>
-			<Show when={bool}>
+			<Show when={bool.value}>
 				<input />
 			</Show>
-			<button onClick={() => (bool.value = !bool.value)}>Toggle</button>
+			<button
+				onClick={() => {
+					console.log("click: ", bool.value, !bool.value);
+
+					bool.value = !bool.value;
+				}}
+			>
+				Toggle
+			</button>
 		</div>
 		<div>
 			<Input />
 			<button onClick={addTodo}>Add</button>
-			<For of={todos}>
+			{/* <For of={todos}>
 				{(todo) => (
 					<div>
 						{todo.value.description}
 						<button onClick={() => removeTodo(todo.value.id)}>Remove</button>
 					</div>
 				)}
-			</For>
+			</For> */}
 		</div>
 	</>
 );

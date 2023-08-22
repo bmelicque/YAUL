@@ -1,4 +1,5 @@
-import { $ID, $NODES, Signal, cleanup, generateId, isSignal, owners } from "./signal";
+import { cleanup, generateId, owners } from "./signal-old";
+import { $ID, $VALUE, Signal, isSignal, $ADD_NODE } from "./signal";
 
 /**
  * A non-empty list of consecutive nodes
@@ -57,6 +58,7 @@ function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, .
 	}
 	const element = document.createElement(tag);
 	for (let child of children) {
+		// @ts-ignore
 		if (isSignal(child)) child = signalToJSX(child);
 		element.append(child);
 	}
@@ -71,10 +73,10 @@ function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, .
 		} else if (isSignal(value)) {
 			ids.push(value[$ID]);
 			const attribute = document.createAttribute(key);
-			attribute.nodeValue = value.value;
+			attribute.nodeValue = value[$VALUE];
 			attributeToProperty[attribute.nodeName] = key;
 			element.setAttributeNode(attribute);
-			value[$NODES].push(attribute);
+			value[$ADD_NODE](attribute);
 		} else {
 			element.setAttribute(key, "" + value);
 		}
@@ -89,6 +91,7 @@ function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, .
 jsx.Fragments = function ({ children }: { children: Node[] }): Node {
 	const fragment = new DocumentFragment();
 	for (let child of children) {
+		// @ts-ignore
 		if (isSignal(child)) child = signalToJSX(child);
 		fragment.append(child);
 	}
@@ -97,10 +100,10 @@ jsx.Fragments = function ({ children }: { children: Node[] }): Node {
 
 function signalToJSX(signal: Signal<any>): Node {
 	const fragment = new DocumentFragment();
-	fragment.append(new Comment(`y-signal=${signal[$ID]}`));
-	const node = toNode(signal.value);
+	fragment.append(new Comment(`y-signal=${signal[$ID]}`)); // TODO change the string
+	const node = toNode(signal[$VALUE]);
 
-	signal[$NODES].push(node);
+	signal[$ADD_NODE](node);
 	fragment.append(node);
 	return fragment;
 }
