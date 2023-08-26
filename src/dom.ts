@@ -6,28 +6,28 @@ import { $ID, $VALUE, Signal, isSignal, $ADD_NODE } from "./signal";
  */
 export type NodeList = [Node, ...Node[]];
 
-declare global {
-	namespace JSX {
-		type Element = Node;
+// declare global {
+// 	namespace JSX {
+// 		type Element = Node;
 
-		interface ElementChildrenAttribute {
-			children: {};
-		}
+// 		interface ElementChildrenAttribute {
+// 			children: {};
+// 		}
 
-		interface IntrinsicElements extends IntrinsicElementsMap {}
+// 		interface IntrinsicElements extends IntrinsicElementsMap {}
 
-		// TODO
-		type IntrinsicElementsMap = {
-			[K in keyof HTMLElementTagNameMap]: {
-				[k: string]: any;
-			};
-		};
+// 		// TODO
+// 		type IntrinsicElementsMap = {
+// 			[K in keyof HTMLElementTagNameMap]: {
+// 				[k: string]: any;
+// 			};
+// 		};
 
-		interface Component {
-			(properties?: { [key: string]: any }, ...children: Node[]): Node;
-		}
-	}
-}
+// 		interface Component {
+// 			(properties?: { [key: string]: any }, ...children: Node[]): Node;
+// 		}
+// 	}
+// }
 
 export const attributeToProperty: { [key: string]: string } = {};
 
