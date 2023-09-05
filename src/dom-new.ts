@@ -27,9 +27,8 @@ declare global {
 	}
 }
 
-export function jsx(tag: string | JSX.Component, properties: Record<string, any>, ...children: Node[]): Node {
+export function jsx(tag: string | JSX.Component, properties: Record<string, any> | null, ...children: Node[]): Node {
 	if (typeof tag === "function") {
-		// TODO can properties be undefined/null?
 		return tag(properties ? ((properties.children = children), properties) : { children });
 	}
 
@@ -69,13 +68,6 @@ jsx.Fragments = function ({ children }: FragmentProps): Node {
 	}
 	return fragment;
 };
-
-function appendChildren(element: Element, children: Node[]) {
-	for (let child of children) {
-		if (isSignal(child)) child = signalToJSX(child);
-		element.append(child);
-	}
-}
 
 // TODO: rename
 function signalToJSX(signal: Signal<any>): Node {
