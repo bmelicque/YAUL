@@ -1,5 +1,5 @@
-import { Context } from "./context-new";
-import { $ID, $LISTENERS, $VALUE, Signal, createSignal } from "./signal-new";
+import { Context } from "./context";
+import { $LISTENERS, $VALUE, Signal, createSignal } from "./signal";
 
 interface Computed<Type> extends Signal<Type> {
 	[$DEPENDENCIES]: Signal<any>[];

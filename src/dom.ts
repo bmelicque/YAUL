@@ -1,172 +1,117 @@
-import { cleanup, generateId, owners } from "./signal-old";
-import { $ID, $VALUE, Signal, isSignal, $ADD_NODE } from "./signal";
+import attributes from "./attributes";
+import { $ATTACH_NODE, $VALUE, Signal, isSignal } from "./signal";
 
-/**
- * A non-empty list of consecutive nodes
- */
-export type NodeList = [Node, ...Node[]];
+declare global {
+	namespace JSX {
+		type Element = Node;
 
-// declare global {
-// 	namespace JSX {
-// 		type Element = Node;
-
-// 		interface ElementChildrenAttribute {
-// 			children: {};
-// 		}
-
-// 		interface IntrinsicElements extends IntrinsicElementsMap {}
-
-// 		// TODO
-// 		type IntrinsicElementsMap = {
-// 			[K in keyof HTMLElementTagNameMap]: {
-// 				[k: string]: any;
-// 			};
-// 		};
-
-// 		interface Component {
-// 			(properties?: { [key: string]: any }, ...children: Node[]): Node;
-// 		}
-// 	}
-// }
-
-export const attributeToProperty: { [key: string]: string } = {};
-
-export const stack: number[] = [];
-export function getOwner() {
-	return stack[stack.length - 1];
-}
-
-export function jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
-	const id = generateId();
-	stack.push(id);
-	let el = _jsx(tag, properties, ...children);
-	if (owners.get(id)) {
-		if (!(el instanceof DocumentFragment)) {
-			const tmp = new DocumentFragment();
-			tmp.append(el);
-			el = tmp;
+		interface ElementChildrenAttribute {
+			children: {};
 		}
-		(el as DocumentFragment).append(new Comment(`y-stack=${id}`));
+
+		interface IntrinsicElements extends IntrinsicElementsMap {}
+
+		// TODO
+		type IntrinsicElementsMap = {
+			[K in keyof HTMLElementTagNameMap]: Record<string, any>;
+		};
+
+		interface Component {
+			(properties?: Record<string, any>, ...children: Node[]): Node;
+		}
 	}
-	stack.pop();
-	return el;
 }
 
-function _jsx(tag: string | JSX.Component, properties: { [key: string]: any }, ...children: Node[]): Node {
+export function jsx(tag: string | JSX.Component, properties: Record<string, any> | null, ...children: Node[]): Node {
 	if (typeof tag === "function") {
-		return tag(Object.assign(properties ?? {}, { children }));
+		return tag(properties ? ((properties.children = children), properties) : { children });
 	}
+
 	const element = document.createElement(tag);
+
+	// attributes
+	for (const key in properties) {
+		const property = properties[key];
+		if (isSignal(property)) {
+			const attr = document.createAttribute(key);
+			attr.nodeValue = property();
+			element.setAttributeNode(attr);
+			property[$ATTACH_NODE](attr);
+		} else {
+			element.setAttribute(key, properties[key]);
+		}
+	}
+
+	// children
 	for (let child of children) {
-		// @ts-ignore
-		if (isSignal(child)) child = signalToJSX(child);
+		if (isSignal(child)) child = signalToNode(child);
 		element.append(child);
 	}
-	if (!properties) return element;
 
-	const fragment = new DocumentFragment();
-	const ids: number[] = [];
-	for (const key in properties) {
-		const value = properties[key];
-		if (key.startsWith("on")) {
-			element.addEventListener(key.slice(2).toLowerCase(), value);
-		} else if (isSignal(value)) {
-			ids.push(value[$ID]);
-			const attribute = document.createAttribute(key);
-			attribute.nodeValue = value[$VALUE];
-			attributeToProperty[attribute.nodeName] = key;
-			element.setAttributeNode(attribute);
-			value[$ADD_NODE](attribute);
-		} else {
-			element.setAttribute(key, "" + value);
-		}
-	}
-	if (ids.length) {
-		fragment.append(new Comment(`y-signal=${ids.join("-")}`));
-	}
-	fragment.append(element);
-	return fragment;
+	return element;
 }
 
-jsx.Fragments = function ({ children }: { children: Node[] }): Node {
+interface FragmentProps {
+	children: Node[];
+}
+
+jsx.Fragments = function ({ children }: FragmentProps): Node {
 	const fragment = new DocumentFragment();
 	for (let child of children) {
-		// @ts-ignore
-		if (isSignal(child)) child = signalToJSX(child);
+		if (isSignal(child)) child = signalToNode(child);
 		fragment.append(child);
 	}
 	return fragment;
 };
 
-function signalToJSX(signal: Signal<any>): Node {
-	const fragment = new DocumentFragment();
-	fragment.append(new Comment(`y-signal=${signal[$ID]}`)); // TODO change the string
+function signalToNode(signal: Signal<any>): Node {
 	const node = toNode(signal[$VALUE]);
-
-	signal[$ADD_NODE](node);
-	fragment.append(node);
-	return fragment;
+	signal[$ATTACH_NODE](node);
+	return node;
 }
 
 /**
- * Takes any value and converts it to a single usable DOM node or an array of nodes.
+ * Takes any value and converts it to a single usable DOM node.
  *
- * Array are converted to an array of nodes. Empty arrays and null values are converted
- * to an empty Comment. Primitives are converted to a Text node.
- *
- * @throws If the value is an object that is neither an array or a DOM node
+ * Nodes are kept unchanged.
+ * `null` and `undefined` are converted to comments.
+ * Other values are coerced to strings and produce a Text node
  */
 export function toNode(value: any): Node {
-	if (Array.isArray(value)) {
-		return new Text(value.join());
-	}
-
-	if (value === null) {
-		return new Comment("");
-	}
-
-	if (value instanceof Node) {
-		return value;
-	}
-
-	if (typeof value === "object" || typeof value === "function") {
-		throw new Error("Non-primitive signals are not valid as JSX children");
-	}
-
+	if (Array.isArray(value)) return new Text(value.join());
+	if (value === null || value === undefined) return new Comment("");
+	if (value instanceof Node) return value;
 	return new Text("" + value);
 }
 
 /**
- * Updates a node in the DOM with a new value. If the value and node types are not
- * compatible, replaces the old node with a new one created from the value.
- *
- * @throws If the value is an object that is neither an array or a DOM node
- *
- * @returns The updated node
+ * Tries to update the node with a new value. If it fails, replace the old node in the DOM with a new one.
+ * @param node The existing node
+ * @param value The new value
+ * @returns The node that is in the DOM by the end of the function's execution.
  */
-export function updateNode(node: Node, value: any): Node {
+export function updateOrReplaceNode(node: Node, value: any): Node {
 	if (value === node) return node;
+
+	// try updating node
 	switch (node.nodeType) {
 		case Node.ATTRIBUTE_NODE:
 			node.nodeValue = value;
 			updateOwnerProperty(node as Attr, value);
 			return node;
 		case Node.TEXT_NODE:
-			if (Array.isArray(value)) {
-				node.nodeValue = value.join();
-				return node;
-			} else if (typeof value !== "object") {
-				node.nodeValue = value;
-				return node;
-			}
-			return replaceNode(toNode(value), node);
+			if (value instanceof Node || value === null || value === undefined) break;
+			node.nodeValue = Array.isArray(value) ? value.join("") : "" + value;
+			return node;
 		case Node.COMMENT_NODE:
-			if (value === null) return node;
-			return replaceNode(toNode(value), node);
-		default:
-			// default also handles node values
-			return replaceNode(toNode(value), node);
+			if (value === null || value === undefined) return node;
+			break;
 	}
+
+	// replace node
+	const newNode = toNode(value);
+	node.parentNode?.replaceChild(newNode, node);
+	return newNode;
 }
 
 /**
@@ -175,39 +120,8 @@ export function updateNode(node: Node, value: any): Node {
  * For example, passing a "value" attribute node will update owner.value
  */
 function updateOwnerProperty(attr: Attr, value: any): void {
-	const owner = attr.ownerElement;
-	if (!owner) return;
-	const prop = attributeToProperty[attr.nodeName];
-	if (owner.hasAttribute(prop)) {
-		(owner as any)[prop] = value;
+	const prop = (attributes as any)[attr.nodeName] ?? attr.nodeName;
+	if (attr.ownerElement?.hasAttribute(prop)) {
+		(attr.ownerElement as any)[prop] = value;
 	}
-}
-
-/**
- * Removes a node from the DOM and replaces it with a single node or a list of at least
- * one node.
- *
- * @returns The inserted node(s).
- */
-export function replaceNode(node: Node, old: Node): Node {
-	old.parentNode?.replaceChild(node, old);
-	cleanup(old);
-	return node;
-}
-
-/**
- * Gets elements from a DocumentFragment and puts them into an array. Fragments are flattened.
- */
-export function fragmentsToFlatArray(node: Node): Node[] {
-	if (!(node instanceof DocumentFragment)) {
-		return [node];
-	}
-
-	const array: Node[] = [];
-	for (const child of node.childNodes) {
-		for (const subnode of fragmentsToFlatArray(child)) {
-			array.push(node);
-		}
-	}
-	return array;
 }

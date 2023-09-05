@@ -1,4 +1,4 @@
-import { createSignal, isSignal } from "../src/signal-new";
+import { createSignal, isSignal } from "../src/signal";
 
 describe("Signal type", () => {
 	it("should be a getter function", () => {

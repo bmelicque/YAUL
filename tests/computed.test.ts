@@ -1,5 +1,5 @@
 import { createComputed } from "../src/computed";
-import { createSignal } from "../src/signal-new";
+import { createSignal } from "../src/signal";
 
 describe("Computed type", () => {
 	it("should get its value from given expression", () => {

@@ -1,5 +1,5 @@
-import { $LISTENERS, $NODES, createSignal } from "./signal-new";
-import { jsx } from "./dom-new";
+import { createSignal } from "./signal";
+import { jsx } from "./dom";
 import { createComputed } from "./computed";
 
 const x = createSignal(1);

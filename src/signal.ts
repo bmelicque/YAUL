@@ -1,5 +1,5 @@
-import { $DEPENDENCIES, $UPDATER, creationContext } from "./computed";
-import { updateOrReplaceNode } from "./dom-new";
+import { creationContext } from "./computed";
+import { updateOrReplaceNode } from "./dom";
 
 export interface Signal<Type> {
 	(): Type;
