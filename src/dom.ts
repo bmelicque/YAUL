@@ -3,7 +3,7 @@ import { $ATTACH_NODE, $VALUE, Signal, isSignal } from "./signal";
 
 declare global {
 	namespace JSX {
-		type Element = Node;
+		type Element = Node | string;
 
 		interface ElementChildrenAttribute {
 			children: {};
@@ -79,7 +79,7 @@ function signalToNode(signal: Signal<any>): Node {
  */
 export function toNode(value: any): Node {
 	if (Array.isArray(value)) return new Text(value.join());
-	if (value === null || value === undefined) return new Comment("");
+	if (value === null || value === undefined) return new Comment();
 	if (value instanceof Node) return value;
 	return new Text("" + value);
 }

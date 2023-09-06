@@ -1,63 +1,50 @@
-// import { $VALUE, $ADD_LISTENER, Signal, isSignal, $LISTENERS } from "./signal";
-// import { $COMPONENT_HANDLERS, deriveSignal } from "./signal-old";
-// import { runWith } from "./context";
+import { $LISTENERS, Signal } from "./signal";
+import { toNode } from "./dom";
 
-// export type ComponentHandler = {
-// 	handle: (value: any) => void;
-// };
+type ShowProps = {
+	when: Signal<any>;
+	children: string | JSX.Element | JSX.Element[];
+	fallback?: JSX.Element;
+};
 
-// type ShowProps = {
-// 	when: () => any;
-// 	children: JSX.Element | JSX.Element[];
-// 	fallback?: JSX.Element;
-// };
+class Toggler {
+	status: boolean;
+	content: Node[];
+	fallback: Node;
+	fragment = new DocumentFragment();
 
-// class Toggler {
-// 	status: boolean;
-// 	content: Node | Node[];
-// 	fragment = new DocumentFragment();
-// 	comment = new Comment();
+	constructor(when: Signal<any>, content: string | JSX.Element | JSX.Element[], fallback: JSX.Element | undefined) {
+		this.status = !!when();
+		this.content = Array.isArray(content) ? content.map(toNode) : [toNode(content)];
+		this.fragment.append(...this.content);
+		this.fallback = toNode(fallback);
+	}
 
-// 	constructor(initalStatus: boolean, content: Node | Node[]) {
-// 		this.status = initalStatus;
-// 		this.content = content;
-// 		if (Array.isArray(content)) {
-// 			this.fragment.append(...content);
-// 		} else {
-// 			this.fragment.append(content);
-// 		}
-// 	}
+	update(when: any) {
+		const status = !!when;
+		if (status && !this.status) {
+			this.fallback.parentNode?.replaceChild(this.fragment, this.fallback);
+		} else if (!status && this.status) {
+			const target = this.content[0];
+			target.parentNode?.insertBefore(this.fallback, target);
+			this.fragment.append(...this.content);
+		}
+		this.status = status;
+	}
+}
 
-// 	update(status: boolean) {
-// 		if (status && !this.status) {
-// 			this.comment.parentNode?.replaceChild(this.fragment, this.comment);
-// 		} else if (!status && this.status) {
-// 			const target: Node = Array.isArray(this.content) ? this.content[0] : this.content;
-// 			target.parentNode?.insertBefore(this.comment, target);
-// 			if (Array.isArray(this.content)) {
-// 				this.fragment.append(...this.content);
-// 			} else {
-// 				this.fragment.append(this.content);
-// 			}
-// 		}
-// 		this.status = status;
-// 	}
-// }
-
-// export function Show(props: ShowProps): Node {
-// 	console.log("---- Show ----");
-
-// 	const init = runWith(undefined, props.when);
-
-// 	const toggler = new Toggler(!!when, props.children);
-// 	when[$ADD_LISTENER]((status) => toggler.update(status));
-// 	console.log(toggler.fragment.children);
-// 	console.log(toggler.comment);
-
-// 	console.log("--------------");
-
-// 	return toggler.status ? toggler.fragment : toggler.comment;
-// }
+/**
+ * Provides control flow over the UI.
+ *
+ * Shows its children when the `when` signal prop is truthy.
+ * Else, displays nothing or a fallback if provided.
+ */
+export function Show(props: ShowProps) {
+	const toggler = new Toggler(props.when, props.children, props.fallback);
+	props.when[$LISTENERS] ??= [];
+	props.when[$LISTENERS].push((value) => toggler.update(value));
+	return toggler.status ? toggler.fragment : toggler.fallback;
+}
 
 // type MapperCallback<Type> = (value: Signal<Type>, index: number) => Node;
 

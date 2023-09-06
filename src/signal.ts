@@ -12,7 +12,7 @@ export interface Signal<Type> {
 	readonly [$ID]: number;
 	[$VALUE]: Type;
 	[$NODES]?: Node[];
-	[$LISTENERS]?: (() => void)[];
+	[$LISTENERS]?: ((value: Type) => void)[];
 	// private methods
 	[$ATTACH_NODE]: (node: Node) => void;
 	// events
@@ -48,7 +48,7 @@ const signalPrototype = {
 		}
 		if (this[$LISTENERS]) {
 			for (const listener of this[$LISTENERS]) {
-				listener();
+				listener(this[$VALUE]);
 			}
 		}
 	},
