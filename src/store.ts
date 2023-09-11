@@ -1,14 +1,38 @@
-import { $VALUE, Signal, createSignal } from "./signal";
+import { $EMIT, $VALUE, Signal, createSignal, signalPrototype } from "./signal";
 
 type Store<Type extends object> = Signal<Type> & {
 	[Prop in keyof Type]: Type[Prop] extends object ? Store<Type[Prop]> : Signal<Type[Prop]>;
+} & {
+	[$TARGET]: Store<Type>;
 };
 
-const handler = {
-	get<Type extends object>(target: Store<Type>, prop: keyof Store<Type>) {
-		if (target.hasOwnProperty(prop)) {
-			return target[prop];
+const $TARGET = Symbol();
+
+const storePrototype = {
+	set<Type extends object>(this: Store<Type>, value: Type | ((_: Type) => Type)): boolean {
+		value = typeof value === "function" ? value(this[$VALUE]) : value;
+		let hasChanged = false;
+		for (const key in this[$VALUE]) {
+			// TODO: clean up signal
+			if (!(key in value)) delete this[$VALUE][key];
 		}
+		for (const key in value) {
+			// all keys might not have been created
+			// use of $TARGET to get the prop on the target object, else it would get the key in $VALUE and create a signal
+			if (this[$TARGET].hasOwnProperty(key)) hasChanged ||= this[key].set(value[key]);
+		}
+		this[$VALUE] = value;
+		if (hasChanged) this[$EMIT]();
+		return hasChanged;
+	},
+};
+Object.setPrototypeOf(storePrototype, signalPrototype);
+
+const handler = {
+	get<Type extends object>(target: Store<Type>, prop: keyof Store<Type>, proxy: any /* TODO */) {
+		if (prop === $TARGET) return target;
+		if (prop === "set" || prop === $EMIT) return target[prop].bind(proxy);
+		if (target.hasOwnProperty(prop)) return target[prop];
 		if (prop in target[$VALUE]) {
 			const value = (target[$VALUE] as any)[prop];
 			switch (typeof value) {
@@ -44,5 +68,5 @@ const handler = {
 export function createStore<Type extends object>(init: Type): Store<Type> {
 	if (typeof init !== "object" || init === null) throw new Error("The initial value of a store must be an object");
 
-	return new Proxy(createSignal(init) as Store<Type>, handler as any);
+	return new Proxy(Object.setPrototypeOf(createSignal(init) as Store<Type>, storePrototype), handler as any);
 }

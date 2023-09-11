@@ -4,8 +4,8 @@ import { updateOrReplaceNode } from "./dom";
 export interface Signal<Type> {
 	(): Type;
 	set: {
-		(newValue: Type): Type;
-		(setter: (current: Type) => Type): Type;
+		(newValue: Type): boolean;
+		(setter: (current: Type) => Type): boolean;
 	};
 
 	// private properties
@@ -27,12 +27,16 @@ export const $ATTACH_NODE = Symbol("attach nodes");
 export const $EMIT = Symbol("emit");
 
 // Defining a Signal prototype that has the necessary methods and inherits form Function
-const signalPrototype = {
-	set<Type>(this: Signal<Type>, value: Type | ((_: Type) => Type)): Type {
+export const signalPrototype = {
+	set<Type>(this: Signal<Type>, value: Type | ((_: Type) => Type)): boolean {
 		// @ts-ignore
-		this[$VALUE] = typeof value === "function" ? value(this[$VALUE]) : value;
+		value = (typeof value === "function" ? value(this[$VALUE]) : value) as Type;
+		if (this[$VALUE] === value) {
+			return false;
+		}
+		this[$VALUE] = value;
 		this[$EMIT]();
-		return this[$VALUE];
+		return true;
 	},
 
 	[$ATTACH_NODE]<Type>(this: Signal<Type>, node: Node) {

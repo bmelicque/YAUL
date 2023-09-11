@@ -8,8 +8,10 @@ describe("Signal type", () => {
 
 	it("should have a setter method", () => {
 		const x = createSignal(0);
-		expect(x.set(42)).toBe(42);
-		expect(x.set((value) => value * 2)).toBe(84);
+		x.set(42);
+		expect(x()).toBe(42);
+		x.set((value) => value * 2);
+		expect(x()).toBe(84);
 	});
 });
 

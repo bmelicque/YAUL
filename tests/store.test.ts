@@ -20,4 +20,13 @@ describe("Store type", () => {
 		const z = y.value;
 		expect(isSignal(z)).toBe(true);
 	});
+
+	it("should be settable", () => {
+		const s = createStore<Record<string, any>>({ key: "value" });
+		s.set({ foo: "bar" });
+		expect(s()).toEqual({ foo: "bar" });
+		const t = s.foo;
+		s.set({ foo: "baz" });
+		expect(t()).toBe("baz");
+	});
 });
