@@ -28,5 +28,8 @@ describe("Store type", () => {
 		const t = s.foo;
 		s.set({ foo: "baz" });
 		expect(t()).toBe("baz");
+		s.foo.set("42");
+		expect(s().foo).toBe("42");
+		expect(t()).toBe("42");
 	});
 });

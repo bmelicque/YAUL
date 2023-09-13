@@ -13,8 +13,6 @@ export interface Signal<Type> {
 	[$VALUE]: Type;
 	[$NODES]?: Node[];
 	[$LISTENERS]?: ((value: Type) => void)[];
-	// private methods
-	[$ATTACH_NODE]: (node: Node) => void;
 	// events
 	[$EMIT]: () => void;
 }
@@ -23,7 +21,6 @@ export const $ID = Symbol("id");
 export const $VALUE = Symbol("value");
 export const $NODES = Symbol("nodes");
 export const $LISTENERS = Symbol("listeners");
-export const $ATTACH_NODE = Symbol("attach nodes");
 export const $EMIT = Symbol("emit");
 
 // Defining a Signal prototype that has the necessary methods and inherits form Function
@@ -39,13 +36,9 @@ export const signalPrototype = {
 		return true;
 	},
 
-	[$ATTACH_NODE]<Type>(this: Signal<Type>, node: Node) {
-		this[$NODES] ??= [];
-		this[$NODES].push(node);
-	},
-
 	[$EMIT]<Type>(this: Signal<Type>) {
 		if (this[$NODES]) {
+			console.log(this, this[$NODES]);
 			for (const node of this[$NODES]) {
 				updateOrReplaceNode(node, this[$VALUE]);
 			}
@@ -57,7 +50,6 @@ export const signalPrototype = {
 		}
 	},
 };
-Object.setPrototypeOf(signalPrototype, Function.prototype);
 
 /**
  * Generates a new unique id
@@ -79,6 +71,10 @@ export function createSignal<Type>(init: Type): Signal<Type> {
 		creationContext.consume(signal);
 		return signal[$VALUE];
 	};
+	Object.defineProperty(signal, "length", {
+		writable: true,
+	});
+	delete signal.length;
 	signal[$ID] = generateId();
 	signal[$VALUE] = init;
 	Object.setPrototypeOf(signal, signalPrototype);

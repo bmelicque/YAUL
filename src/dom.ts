@@ -1,5 +1,5 @@
 import attributes from "./attributes";
-import { $ATTACH_NODE, $VALUE, Signal, isSignal } from "./signal";
+import { $NODES, $VALUE, Signal, isSignal } from "./signal";
 
 declare global {
 	namespace JSX {
@@ -36,7 +36,8 @@ export function jsx(tag: string | JSX.Component, properties: Record<string, any>
 			const attr = document.createAttribute(key);
 			attr.nodeValue = property();
 			element.setAttributeNode(attr);
-			property[$ATTACH_NODE](attr);
+			property[$NODES] ??= [];
+			property[$NODES].push(attr);
 		} else {
 			element.setAttribute(key, properties[key]);
 		}
@@ -66,7 +67,8 @@ jsx.Fragments = function ({ children }: FragmentProps): Node {
 
 function signalToNode(signal: Signal<any>): Node {
 	const node = toNode(signal[$VALUE]);
-	signal[$ATTACH_NODE](node);
+	signal[$NODES] ??= [];
+	signal[$NODES].push(node);
 	return node;
 }
 
