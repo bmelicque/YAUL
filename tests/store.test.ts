@@ -32,4 +32,11 @@ describe("Store type", () => {
 		expect(s().foo).toBe("42");
 		expect(t()).toBe("42");
 	});
+
+	it("should handle arrays", () => {
+		const s = createStore([0, 1, 2]);
+		expect(s.length()).toBe(3);
+		s.set((array) => [...array, array.length]);
+		expect(s.length()).toBe(4);
+	});
 });

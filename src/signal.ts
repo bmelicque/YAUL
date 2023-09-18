@@ -38,7 +38,6 @@ export const signalPrototype = {
 
 	[$EMIT]<Type>(this: Signal<Type>) {
 		if (this[$NODES]) {
-			console.log(this, this[$NODES]);
 			for (const node of this[$NODES]) {
 				updateOrReplaceNode(node, this[$VALUE]);
 			}

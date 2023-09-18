@@ -1,5 +1,6 @@
 import { $LISTENERS, Signal } from "./signal";
 import { toNode } from "./dom";
+import { Reactive, Store } from "./store";
 
 type ShowProps = {
 	when: Signal<any>;
@@ -44,6 +45,44 @@ export function Show(props: ShowProps) {
 	props.when[$LISTENERS] ??= [];
 	props.when[$LISTENERS].push((value) => toggler.update(value));
 	return toggler.status ? toggler.fragment : toggler.fallback;
+}
+
+class Mapper<Type> {
+	comments: [Comment, ...Comment[]] = [new Comment()];
+
+	constructor(private source: Store<Type[]>, private renderer: (signal: Reactive<Type>, index: number) => Node) {}
+
+	/**
+	 * Pushes a node at the end of the component
+	 * @param node
+	 */
+	pushNode(node: Node) {
+		const currentLast = this.comments[this.comments.length - 1];
+		const newLast = new Comment();
+		this.comments.push(newLast);
+		currentLast.parentNode?.insertBefore(newLast, currentLast.nextSibling);
+		newLast.parentNode?.insertBefore(node, newLast);
+	}
+
+	/**
+	 * removes the last node
+	 */
+	popNode() {
+		if (this.comments.length <= 1) return;
+		const last = this.comments[this.comments.length - 1];
+		const secondToLast = this.comments[this.comments.length - 2];
+		while (last.previousSibling && last.previousSibling !== secondToLast) {
+			last.previousSibling.remove();
+		}
+		last.remove();
+		this.comments.pop();
+	}
+
+	update() {
+		for (let i = this.comments.length - 1; i < this.source().length; i++) {
+			this.pushNode(renderer(this.source, i));
+		}
+	}
 }
 
 // type MapperCallback<Type> = (value: Signal<Type>, index: number) => Node;
