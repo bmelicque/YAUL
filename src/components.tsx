@@ -47,21 +47,23 @@ export function Show(props: ShowProps) {
 	return toggler.status ? toggler.fragment : toggler.fallback;
 }
 
+type Renderer<Type> = (value: Reactive<Type>, index: number) => JSX.Element;
+
 class Mapper<Type> {
 	comments: [Comment, ...Comment[]] = [new Comment()];
 
-	constructor(private source: Store<Type[]>, private renderer: (signal: Reactive<Type>, index: number) => Node) {}
+	constructor(private source: Store<Type[]>, private renderer: Renderer<Type>) {}
 
 	/**
 	 * Pushes a node at the end of the component
 	 * @param node
 	 */
-	pushNode(node: Node) {
+	pushNode(node: JSX.Element) {
 		const currentLast = this.comments[this.comments.length - 1];
 		const newLast = new Comment();
 		this.comments.push(newLast);
 		currentLast.parentNode?.insertBefore(newLast, currentLast.nextSibling);
-		newLast.parentNode?.insertBefore(node, newLast);
+		newLast.parentNode?.insertBefore(toNode(node), newLast);
 	}
 
 	/**
@@ -79,70 +81,44 @@ class Mapper<Type> {
 	}
 
 	update() {
+		// don't forget that there are n+1 comments (start comment + end of each node)
+		while (this.source().length < this.comments.length - 1) {
+			this.popNode();
+		}
 		for (let i = this.comments.length - 1; i < this.source().length; i++) {
-			this.pushNode(renderer(this.source, i));
+			this.pushNode(this.renderer(this.source[i], i));
 		}
 	}
 }
 
-// type MapperCallback<Type> = (value: Signal<Type>, index: number) => Node;
+type ForProps<Type> = {
+	of: Store<Type[]>;
+	children: Renderer<Type> | [Renderer<Type>];
+};
 
-// type ForProps<Type> = {
-// 	of: Signal<Type[]>;
-// 	children: MapperCallback<Type> | [MapperCallback<Type>];
-// };
-
-// class Mapper<Type> implements ComponentHandler {
-// 	nodes: Node[] = [];
-// 	fn: MapperCallback<Type>;
-// 	end: Comment;
-// 	arraySignal: Signal<Type[]>;
-// 	signals: Signal<Type>[] = [];
-
-// 	constructor(arraySignal: Signal<Type[]>, fn: MapperCallback<Type>, end: Comment) {
-// 		this.arraySignal = arraySignal;
-// 		this.fn = fn;
-// 		this.end = end;
-// 	}
-
-// 	handle() {
-// 		if (this.nodes.length < this.arraySignal.value.length) {
-// 			for (let i = this.nodes.length; i < this.arraySignal.value.length; i++) {
-// 				const signal = deriveSignal(() => this.arraySignal.value[i], [this.arraySignal]);
-// 				this.signals.push(signal);
-// 				const comment = new Comment(`y0[${i}]`); // TODO right index
-// 				this.nodes.push(comment);
-// 				this.end.parentNode?.insertBefore(comment, this.end);
-// 				const node = this.fn(signal, i);
-// 				this.end.parentNode?.insertBefore(node, this.end);
-// 			}
-// 			console.log(this.signals.map((signal) => ({ ...signal.value })));
-// 			return;
-// 		}
-
-// 		if (this.arraySignal.value.length < this.nodes.length) {
-// 			let node = this.end.previousSibling;
-// 			const target = this.nodes[this.arraySignal.value.length];
-// 			while (node && node !== target) {
-// 				node.remove();
-// 				node = this.end.previousSibling;
-// 			}
-// 			for (const signal of this.signals.splice(this.arraySignal.value.length)) {
-// 				// TODO destroy signal
-// 			}
-// 			console.log(this.signals.map((signal) => ({ ...signal.value })));
-// 			return;
-// 		}
-// 	}
-// }
-
-// export function For<Type>(props: ForProps<Type>) {
-// 	const fragments = new DocumentFragment();
-// 	const end = new Comment();
-// 	fragments.append(end);
-// 	const handler = new Mapper(props.of, Array.isArray(props.children) ? props.children[0] : props.children, end);
-// 	handler.handle();
-// 	props.of[$COMPONENT_HANDLERS] ??= [];
-// 	props.of[$COMPONENT_HANDLERS].push(handler);
-// 	return fragments;
-// }
+/**
+ * Allows mapping elements to the UI.
+ *
+ * @component
+ *
+ * Takes an array store as its mapping source and a render function as its child.
+ *
+ * @example
+ *
+ * ```
+ * 	const fruits = createStore(['apple', 'orange', 'banana'])
+ * 	return <For of={fruits}>
+ * 		(fruit, index) => <article>Fruit #{index + 1}: {fruit}</article>
+ * 	</For>
+ * ```
+ */
+export function For<Type>(props: ForProps<Type>) {
+	if (Array.isArray(props.children)) props.children = props.children[0];
+	const mapper = new Mapper(props.of, props.children);
+	const fragment = new DocumentFragment();
+	fragment.append(mapper.comments[0]);
+	mapper.update();
+	props.of[$LISTENERS] ??= [];
+	props.of[$LISTENERS].push(() => mapper.update());
+	return fragment;
+}

@@ -1,3 +1,4 @@
+import { For } from "./components";
 import { jsx } from "./dom";
 import { createStore } from "./store";
 
@@ -15,9 +16,8 @@ console.log("after push:", l());
 l.length.set(10);
 
 setInterval(() => {
-	l.set([...l(), l().length]); // FIXME
-	console.log(l());
-	console.log(l.length(), l().length);
+	l.set([...l(), l().length]);
+	l[0].set(Math.random());
 }, 1000);
 
-document.body.append(<div>{l}</div>);
+document.body.append(<For of={l}>{(value, index) => <div>{value}</div>}</For>);
