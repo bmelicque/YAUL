@@ -1,15 +1,21 @@
-import { $DEPENDENCIES, $UPDATER } from "./computed";
-import { $EMIT, $ID, $LISTENERS, $NODES, $VALUE, Signal, createSignal, isSignal, signalPrototype } from "./signal";
+import {
+	$DEPENDENCIES,
+	$EMIT,
+	$ID,
+	$LISTENERS,
+	$NODES,
+	$UPDATER,
+	$VALUE,
+	Signal,
+	createSignal,
+	isSignal,
+	signalPrototype,
+} from "./signal";
 
 /**
  * Maps the type to a Store if possible, else to a Signal
  */
 export type Reactive<Type> = Type extends object ? Store<Type> : Signal<Type>;
-
-/**
- * Goes from Store type to plain type
- */
-type Unwrap<Type> = Type extends Store<infer T> ? T : Type;
 
 /**
  * Asserts that the given key is present in the given generic type.

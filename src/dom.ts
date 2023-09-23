@@ -1,5 +1,5 @@
 import attributes from "./attributes";
-import { $NODES, $VALUE, Signal, isSignal } from "./signal";
+import { $DESTROY, $DETACH_NODE, $NODES, $VALUE, Signal, isSignal } from "./signal";
 
 declare global {
 	namespace JSX {
@@ -22,6 +22,8 @@ declare global {
 	}
 }
 
+const nodeMap = new Map<Node, Signal<any>>();
+
 export function jsx(tag: string | JSX.Component, properties: Record<string, any> | null, ...children: Node[]): Node {
 	if (typeof tag === "function") {
 		return tag(properties ? ((properties.children = children), properties) : { children });
@@ -38,6 +40,7 @@ export function jsx(tag: string | JSX.Component, properties: Record<string, any>
 			element.setAttributeNode(attr);
 			property[$NODES] ??= [];
 			property[$NODES].push(attr);
+			nodeMap.set(attr, property);
 		} else {
 			element.setAttribute(key, properties[key]);
 		}
@@ -69,6 +72,7 @@ function signalToNode(signal: Signal<any>): Node {
 	const node = toNode(signal[$VALUE]);
 	signal[$NODES] ??= [];
 	signal[$NODES].push(node);
+	nodeMap.set(node, signal);
 	return node;
 }
 
@@ -125,5 +129,29 @@ function updateOwnerProperty(attr: Attr, value: any): void {
 	const prop = (attributes as any)[attr.nodeName] ?? attr.nodeName;
 	if (attr.ownerElement?.hasAttribute(prop)) {
 		(attr.ownerElement as any)[prop] = value;
+	}
+}
+
+/**
+ * Clean up signals when they disappear from the DOM
+ */
+new MutationObserver(function (mutations) {
+	for (const mutation of mutations) {
+		for (const removedNode of mutation.removedNodes) {
+			parseTree(removedNode);
+		}
+	}
+}).observe(document.body, { attributes: true, childList: true, characterData: true, subtree: true });
+
+function parseTree(node: Node) {
+	const nodeIterator = document.createNodeIterator(node);
+	let currentNode;
+	while ((currentNode = nodeIterator.nextNode())) {
+		nodeMap.get(currentNode)?.[$DETACH_NODE](currentNode);
+		if (currentNode instanceof HTMLElement) {
+			for (const attribute of currentNode.attributes) {
+				nodeMap.get(attribute)?.[$DETACH_NODE](currentNode);
+			}
+		}
 	}
 }

@@ -1,6 +1,6 @@
 import { $LISTENERS, Signal } from "./signal";
-import { toNode } from "./dom";
 import { Reactive, Store } from "./store";
+import { toNode } from "./dom";
 
 type ShowProps = {
 	when: Signal<any>;
