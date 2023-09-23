@@ -1,5 +1,5 @@
 import attributes from "./attributes";
-import { $DESTROY, $DETACH_NODE, $NODES, $VALUE, Signal, isSignal } from "./signal";
+import { $DETACH_NODE, $NODES, $VALUE, Signal, isSignal } from "./signal";
 
 declare global {
 	namespace JSX {
