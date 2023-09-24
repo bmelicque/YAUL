@@ -1,4 +1,4 @@
-import { $LISTENERS, Signal } from "./signal";
+import { $listeners, Signal } from "./signal";
 import { Reactive, Store } from "./store";
 import { toNode } from "./dom";
 
@@ -42,8 +42,8 @@ class Toggler {
  */
 export function Show(props: ShowProps) {
 	const toggler = new Toggler(props.when, props.children, props.fallback);
-	props.when[$LISTENERS] ??= [];
-	props.when[$LISTENERS].push((value) => toggler.update(value));
+	props.when[$listeners] ??= [];
+	props.when[$listeners].push((value) => toggler.update(value));
 	return toggler.status ? toggler.fragment : toggler.fallback;
 }
 
@@ -118,7 +118,7 @@ export function For<Type>(props: ForProps<Type>) {
 	const fragment = new DocumentFragment();
 	fragment.append(mapper.comments[0]);
 	mapper.update();
-	props.of[$LISTENERS] ??= [];
-	props.of[$LISTENERS].push(() => mapper.update());
+	props.of[$listeners] ??= [];
+	props.of[$listeners].push(() => mapper.update());
 	return fragment;
 }

@@ -1,11 +1,11 @@
 import {
-	$DEPENDENCIES,
-	$EMIT,
-	$ID,
-	$LISTENERS,
-	$NODES,
-	$UPDATER,
-	$VALUE,
+	$dependencies,
+	$emit,
+	$id,
+	$listeners,
+	$nodes,
+	$updater,
+	$value,
 	Signal,
 	createSignal,
 	isSignal,
@@ -30,18 +30,16 @@ export type Store<Type extends object> = Signal<Type> & {
 	length: AssertInType<Type, "length">;
 	name: AssertInType<Type, "name">;
 	prototype: AssertInType<Type, "prototype">;
-	[$TARGET]: Store<Type>;
 };
 
-const $TARGET = Symbol();
-const INTERNALS = [$ID, $VALUE, $NODES, $LISTENERS, $DEPENDENCIES, $UPDATER] as const;
+const INTERNALS = [$id, $value, $nodes, $listeners, $dependencies, $updater] as const;
 function isInternal(prop: any): prop is (typeof INTERNALS)[number] {
 	return INTERNALS.indexOf(prop) !== -1;
 }
 
 const storePrototype = {
 	set<Type extends object>(this: Store<Type>, value: Type | ((_: Type) => Type)): boolean {
-		value = typeof value === "function" ? value(this[$VALUE]) : value;
+		value = typeof value === "function" ? value(this[$value]) : value;
 		if (typeof value !== "object" || value === null) throw new Error("The value of a store must be an object");
 		let hasChanged = false;
 		// double check for common keys of value and this in BOTH loops because of non-iterable properties (like length for arrays)
@@ -57,14 +55,13 @@ const storePrototype = {
 		}
 		for (const key in value) {
 			// all keys might not have been created
-			// use of $TARGET to get the prop on the target object, else it would get the key in $VALUE and create a signal
 			if (this.hasOwnProperty(key)) {
 				hasChanged ||= this[key].set(value[key]);
 			}
-			hasChanged ||= this[$VALUE][key] !== value[key];
+			hasChanged ||= this[$value][key] !== value[key];
 		}
-		this[$VALUE] = value as any;
-		if (hasChanged) this[$EMIT]();
+		this[$value] = value as any;
+		if (hasChanged) this[$emit]();
 		return hasChanged;
 	},
 };
@@ -72,9 +69,6 @@ Object.setPrototypeOf(storePrototype, signalPrototype);
 
 const handler = {
 	get<Type extends object>(target: Store<Type>, prop: keyof Store<Type>, proxy: Store<Type>) {
-		if (prop === $TARGET) {
-			return target;
-		}
 		// non-internal owned properties are signal reflects of $VALUE keys
 		if (isInternal(prop) || target.hasOwnProperty(prop)) {
 			return target[prop];
@@ -82,8 +76,8 @@ const handler = {
 		if (signalPrototype.hasOwnProperty(prop)) {
 			return target[prop].bind(target); // .set() and [$EMIT]()
 		}
-		if (prop in target[$VALUE]) {
-			const value = (target[$VALUE] as any)[prop];
+		if (prop in target[$value]) {
+			const value = (target[$value] as any)[prop];
 			switch (typeof value) {
 				case "function": // methods
 					// without bind, the method is a loose function with this === undefined
@@ -98,7 +92,7 @@ const handler = {
 					if (target[prop] === undefined) {
 						target[prop] = createSignal(value) as any;
 						// unlike sub-stores which hold a reference to the value to update, sub-signals need a listener to update the primitive value
-						target[prop][$LISTENERS] = [(value: any) => ((target[$VALUE] as any)[prop] = value)];
+						target[prop][$listeners] = [(value: any) => ((target[$value] as any)[prop] = value)];
 					}
 					return target[prop];
 			}
@@ -109,11 +103,11 @@ const handler = {
 		if (isInternal(prop)) {
 			target[prop] = value;
 		} else if (target.hasOwnProperty(prop) && isSignal(target[prop])) {
-			target[prop].set(isSignal(value) ? value[$VALUE] : value);
+			target[prop].set(isSignal(value) ? value[$value] : value);
 		} else {
 			target[prop] = isSignal(value) ? value : createSignal(value);
 		}
-		target[$EMIT]();
+		target[$emit]();
 		return true;
 	},
 };

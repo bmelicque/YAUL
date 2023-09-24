@@ -1,5 +1,5 @@
 import attributes from "./attributes";
-import { $DETACH_NODE, $NODES, $VALUE, Signal, isSignal } from "./signal";
+import { $detachNode, $nodes, $value, Signal, isSignal } from "./signal";
 
 declare global {
 	namespace JSX {
@@ -38,8 +38,8 @@ export function jsx(tag: string | JSX.Component, properties: Record<string, any>
 			const attr = document.createAttribute(key);
 			attr.nodeValue = property();
 			element.setAttributeNode(attr);
-			property[$NODES] ??= [];
-			property[$NODES].push(attr);
+			property[$nodes] ??= [];
+			property[$nodes].push(attr);
 			nodeMap.set(attr, property);
 		} else {
 			element.setAttribute(key, properties[key]);
@@ -69,9 +69,9 @@ jsx.Fragments = function ({ children }: FragmentProps): Node {
 };
 
 function signalToNode(signal: Signal<any>): Node {
-	const node = toNode(signal[$VALUE]);
-	signal[$NODES] ??= [];
-	signal[$NODES].push(node);
+	const node = toNode(signal[$value]);
+	signal[$nodes] ??= [];
+	signal[$nodes].push(node);
 	nodeMap.set(node, signal);
 	return node;
 }
@@ -147,10 +147,10 @@ function parseTree(node: Node) {
 	const nodeIterator = document.createNodeIterator(node);
 	let currentNode;
 	while ((currentNode = nodeIterator.nextNode())) {
-		nodeMap.get(currentNode)?.[$DETACH_NODE](currentNode);
+		nodeMap.get(currentNode)?.[$detachNode](currentNode);
 		if (currentNode instanceof HTMLElement) {
 			for (const attribute of currentNode.attributes) {
-				nodeMap.get(attribute)?.[$DETACH_NODE](currentNode);
+				nodeMap.get(attribute)?.[$detachNode](currentNode);
 			}
 		}
 	}
