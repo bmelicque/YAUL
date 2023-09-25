@@ -1,12 +1,10 @@
-# Introduction
+# What's Yaful?
 
-## What's YAFUL?
-
-**YAFUL** /yəfuːl/, standing for _Yet Another Freaking UI Library_ (also standing for _Why Another Freaking UI Library?_), is as its name implies, a frontend ~~library~~ framework (according to your vision of React?).
+**Yaful** /yəfuːl/ (standing for _Yet Another Freaking UI Library_, or _Why Another Freaking UI Library?_) is, as its name implies, a frontend framework/library.
 
 It's designed as a lightweight, TypeScript-first, and easy-to-learn. It's not production ready though (and will probably never be...).
 
-## Motivation
+# Motivation
 
 This is basically an exercize for me as a junior dev. It will probably not be maintained.
 
@@ -16,14 +14,100 @@ A few things I've learned:
 - Complex DOM manipulations
 - Symbols as object keys (did you know they were non-enumerable by default? it took me weeks to figure it out!)
 - Proxies are tricky
-- "Best practices" sometimes make things much harder, and the gain's not that great with ~600 LoC
+- "Best practices" sometimes make things much harder, and the gain's not that great with only ~600 LoC
 
-# How to use
+# A basic component
 
-## Installation
+```jsx
+import { createComputed, createSignal, jsx } from "yaful";
 
-## Components
+function Counter() {
+	const count = createSignal(0);
+	const doubleCount = createComputed(() => count() * 2);
 
-## Signals etc.
+	console.log("This runs only once");
 
-## Built-in components
+	return (
+		<>
+			<button onclick={() => count.set((val) => val + 1)}>+ 1</button>
+			<p>
+				{doubleCount} is the double of {count}
+			</p>
+		</>
+	);
+}
+```
+
+Yaful uses functions and JSX to create components. Contrary to React, functions are constructors that are only run once. Yaful uses no virtual DOM and uses signals to update the real DOM.
+
+# Signals, Computed & Stores
+
+Simple reactive values may be created with `createSignal`. They may be used as-is in JSX:
+
+```jsx
+const count = createSignal(0);
+return <div>{count}</div>;
+```
+
+Signals are unwrapped by being called:
+
+```js
+const signal = createSignal("hi!"); // signal is reactive
+const value = signal(); // value is not
+```
+
+You can set a new value with the `set` method:
+
+```js
+const count = createSignal(0);
+count.set(1); // count's value is now 1;
+count.set((current) => current + 1); // count's value is now 2;
+```
+
+Computed values are created with `createComputed`. It will detect any unwrapping in its constructor to know which signals to listen to.
+
+```js
+const a = createSignal(1);
+const b = createSignal(2);
+const sum = createComputed(() => a() + b()); // sum will listen to a and b changes
+```
+
+More complex values may be created with `createStore`, which will lazily create sub-signals when needed.
+
+```js
+const user = createStore({
+	name: "John",
+	age: "42",
+});
+const plainName = user().name; // not reactive
+const reactiveName = user.name; // reactiveName is a signal
+```
+
+# Built-in components
+
+Yaful provides a couple built-in components, `<Show />` and `<For />`
+
+```jsx
+const show = createSignal(true);
+return (
+	<>
+		<button onClick={() => show.set((current) => !current)}>Toggle</button>
+		<Show when={show}>
+			<p>This is a paragraph</p>
+		</Show>
+	</>
+);
+```
+
+```jsx
+const fruits = createStore(["apple", "banana", "orange"]);
+return (
+	<For of={fruits}>
+		{(fruit, index) => (
+			<div>
+				Fruit #{index}: {fruit}
+			</div>
+		)}
+	</For>
+);
+```
