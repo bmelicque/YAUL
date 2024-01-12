@@ -42,7 +42,11 @@ export function jsx(tag: string | JSX.Component, properties: Record<string, any>
 			property[$nodes].push(attr);
 			nodeMap.set(attr, property);
 		} else {
-			element.setAttribute(key, properties[key]);
+			if (key.startsWith("on") && typeof property === "function") {
+				element.addEventListener(key.slice(2).toLowerCase(), property);
+			} else {
+				element.setAttribute(key, properties[key]);
+			}
 		}
 	}
 

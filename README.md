@@ -1,6 +1,6 @@
-# What's Yaful?
+# What's Yaul?
 
-**Yaful** /yəfuːl/ (standing for _Yet Another Freaking UI Library_, or _Why Another Freaking UI Library?_) is, as its name implies, a frontend framework/library.
+**Yaul** (standing for _Yet Another UI Library_, or _Why Another UI Library?_) is, as its name implies, a frontend framework/library.
 
 It's designed as a lightweight, TypeScript-first, and easy-to-learn. It's not production ready though (and will probably never be...).
 
@@ -19,7 +19,7 @@ A few things I've learned:
 # A basic component
 
 ```jsx
-import { createComputed, createSignal, jsx } from "yaful";
+import { createComputed, createSignal, jsx } from "yaul";
 
 function Counter() {
 	const count = createSignal(0);
@@ -38,7 +38,7 @@ function Counter() {
 }
 ```
 
-Yaful uses functions and JSX to create components. Contrary to React, functions are constructors that are only run once. Yaful uses no virtual DOM and uses signals to update the real DOM.
+Yaul uses functions and JSX to create components. Contrary to React, functions are constructors that are only run once. Yaul uses no virtual DOM and uses signals to update the real DOM.
 
 # Signals, Computed & Stores
 
@@ -85,7 +85,7 @@ const reactiveName = user.name; // reactiveName is a signal
 
 # Built-in components
 
-Yaful provides a couple built-in components, `<Show />` and `<For />`
+Yaul provides a couple built-in components, `<Show />` and `<For />`
 
 ```jsx
 const show = createSignal(true);
