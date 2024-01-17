@@ -1,330 +1,142 @@
-const _id = {
-	_: 0,
-	get(): string {
-		return "" + this._++;
+import { Context } from "./context";
+import { updateOrReplaceNode } from "./dom";
+
+export interface Signal<Type> {
+	(): Type;
+	set: {
+		(newValue: Type): boolean;
+		(setter: (current: Type) => Type): boolean;
+	};
+
+	// private properties
+	readonly [$id]: number;
+	[$value]: Type;
+	[$nodes]?: Node[];
+	[$listeners]?: ((value: Type) => void)[];
+	// events
+	[$emit]: () => void;
+	[$detachNode]: (node: Node) => void;
+	[$destroy]: () => void;
+}
+
+export const $id = Symbol("id");
+export const $value = Symbol("value");
+export const $nodes = Symbol("nodes");
+export const $listeners = Symbol("listeners");
+export const $dependencies = Symbol("dependencies");
+export const $updater = Symbol("updater");
+export const $emit = Symbol("emit");
+export const $detachNode = Symbol("detach node");
+export const $destroy = Symbol("destroy");
+
+// Defining a Signal prototype that has the necessary methods and inherits form Function
+export const signalPrototype = {
+	set<Type>(this: Signal<Type>, value: Type | ((_: Type) => Type)): boolean {
+		// @ts-ignore
+		value = (typeof value === "function" ? value(this[$value]) : value) as Type;
+		if (this[$value] === value) {
+			return false;
+		}
+		this[$value] = value;
+		this[$emit]();
+		return true;
 	},
-};
 
-const _signals = new Map<string, Signal<any>>();
-
-type _SignalPrivates<Type> = {
-	id: string;
-	expression: (() => Type) | undefined;
-	value: Type;
-	dependencies: Signal<any>[];
-	listeners: Signal<any>[];
-	elements: HTMLElement[];
-	elementExpressions: Map<HTMLElement, (value: any) => any>;
-};
-
-const _privates = new WeakMap<Signal<any>, _SignalPrivates<any>>();
-
-const _elements = new Map<string, HTMLElement | Text>();
-
-// TODO: Le signal peut être lié à des TextNodes et des HTMLElements
-
-function _enforceLifeTime(signal: Signal<any>) {
-	const privates = _privates.get(signal);
-	if (!privates || privates.elements.length || privates.listeners.length) return;
-
-	_signals.delete(privates.id);
-	for (const dependency of privates.dependencies) {
-		_removeListener(dependency, signal);
-	}
-}
-
-function _removeListener(source: Signal<any>, listener: Signal<any>) {
-	const listeners = _privates.get(source)?.listeners;
-	if (!listeners) return;
-	for (let i = 0; i < listeners.length; i++) {
-		if (listeners[i] === listener) {
-			listeners.splice(i, 1);
-			break;
-		}
-	}
-	_enforceLifeTime(source);
-}
-
-function _removeDOMElement(signalId: string, elementId: string) {
-	const signal = _signals.get(signalId);
-	if (!signal) return;
-	const elements = _privates.get(signal)?.elements;
-	if (!elements) return;
-	for (let i = 0; i < elements.length; i++) {
-		if (elements[i].getAttribute("i-id") === elementId) {
-			elements.splice(i, 1);
-			break;
-		}
-	}
-	_enforceLifeTime(signal);
-}
-
-function _emit(source: Signal<any>) {
-	const privates = _privates.get(source);
-	if (!privates) return;
-	for (const element of privates.elements) {
-		element.innerHTML = privates.elementExpressions.get(element)?.(privates.value) ?? privates.value;
-
-		if (element.tagName === "#text") {
-		}
-
-		if (element.tagName === "INPUT") {
-			element.setAttribute("value", privates.elementExpressions.get(element)?.(privates.value) ?? privates.value);
-		}
-	}
-	for (const listener of privates.listeners) {
-		const expression = _privates.get(listener)?.expression;
-		if (expression) {
-			listener.value = expression();
-		}
-	}
-}
-
-export class Signal<Type> {
-	constructor(init: Type);
-	constructor(init: () => Type, ...dependencies: Signal<any>[]);
-	constructor(init: Type | (() => Type), ...dependencies: Signal<any>[]) {
-		const id = _id.get();
-		_signals.set(id, this);
-		_privates.set(this, {
-			id,
-			expression: init instanceof Function ? init : undefined,
-			value: init instanceof Function ? init() : init,
-			dependencies,
-			listeners: [],
-			elements: [],
-			elementExpressions: new Map(),
-		});
-		for (const dependency of dependencies) {
-			_privates.get(dependency)?.listeners.push(this);
-		}
-	}
-
-	// TODO: see for JSX
-	// TODO: save expression with element (Map?)
-	element(expression?: (value: Type) => any) {
-		const privates = _privates.get(this)!;
-		const element = document.createElement("s-val");
-		const text = document.createTextNode(expression?.(privates.value) ?? "" + privates.value);
-		element.append(text);
-		element.dataset.signal = `${privates?.id ?? ""}-${_id.get()}`;
-		element.setAttribute("s-id", privates?.id ?? "");
-		element.setAttribute("i-id", "" + _id.get());
-		privates.elements.push(element);
-		if (expression) {
-			privates.elementExpressions.set(element, expression);
-		}
-		return element;
-	}
-
-	get value() {
-		return _privates.get(this)?.value;
-	}
-
-	set value(value: Type) {
-		if (_privates.get(this)) {
-			_privates.get(this)!.value = value;
-		}
-		_emit(this);
-	}
-}
-
-const observer = new MutationObserver((mutations) => {
-	for (const mutation of mutations) {
-		for (const node of mutation.removedNodes) {
-			// TODO parse subnodes !
-			removeRecursively(node);
-			if (node.nodeName === "SIG") {
-				_removeDOMElement(
-					(node as HTMLElement).getAttribute("s-id") ?? "",
-					(node as HTMLElement).getAttribute("i-id") ?? ""
-				);
+	[$emit]<Type>(this: Signal<Type>) {
+		if (this[$nodes]) {
+			for (const node of this[$nodes]) {
+				updateOrReplaceNode(node, this[$value]);
 			}
 		}
-	}
-});
+		if (this[$listeners]) {
+			for (const listener of this[$listeners]) {
+				listener(this[$value]);
+			}
+		}
+	},
 
-// TODO supprimer de façon asynchrone
-//      (Pour éviter par exemple de bloquer le render d'une page en supprimant l'ancienne)
-function removeRecursively(node: Node) {
-	for (const childNode of node.childNodes) {
-		removeRecursively(childNode);
-	}
-	if (node.nodeName === "#comment") {
-		const res = node.nodeValue?.trim().match(/^s-(\d?)-(\d?)$/);
-		if (!res) return;
-		return _removeDOMElement(res[1], res[2]);
-	}
-	if (node instanceof HTMLElement) {
-		const id = node.dataset.signal;
-		if (!id) return;
-		console.log(id);
-	}
-}
+	[$detachNode](this: Signal<unknown>, node: Node) {
+		if (!this[$nodes]) return;
+		// TODO: optimize this?
+		this[$nodes].filter((n) => n !== node);
+		if (!this[$nodes].length && !this[$listeners]?.length) {
+			this[$destroy]();
+		}
+	},
 
-// TODO: After DOM load
-observer.observe(document.querySelector("body")!, { childList: true, subtree: true });
+	[$destroy]() {},
+};
 
-function _bind(element: HTMLElement, signal: Signal<any>) {
-	const privates = _privates.get(signal);
-	if (!privates) return;
-	element.innerText = privates.value;
-	element.setAttribute("s-id", privates?.id ?? "");
-	element.setAttribute("i-id", "" + _id.get());
-	privates.elements.push(element);
-	return element;
+/**
+ * Generates a new unique id
+ */
+const generateId = (
+	(_: number) => () =>
+		_++
+)(0);
+
+/**
+ * Creates a reactive value. The signal itself is a getter function that returns the unwrapped value.
+ * It also has a .set() method to update the value.
+ *
+ * @param init The initial value of the signal
+ */
+export function createSignal<Type>(init: Type): Signal<Type> {
+	const signal: any = function (): Type {
+		creationContext.consume(signal);
+		return signal[$value];
+	};
+	Object.defineProperty(signal, "length", {
+		writable: true,
+	});
+	delete signal.length;
+	signal[$id] = generateId();
+	signal[$value] = init;
+	Object.setPrototypeOf(signal, signalPrototype);
+	return signal as Signal<Type>;
 }
 
 /**
- *  OLD VERSION
+ * Checks if a value is a Signal
  */
-// export class Signal<Type> {
-// 	#id: string;
-// 	#expression: (() => Type) | undefined;
-// 	#value: Type;
-// 	readonly #dependencies: readonly Signal<any>[];
-// 	#listeners: Signal<any>[];
-// 	#elements: HTMLElement[];
-// 	#elementExpressions: Map<HTMLElement, (value: Type) => any>;
-// 	// Besoin de supprimer à partir de l'id
-// 	// itérer sur élément + expression
+export function isSignal(value: unknown): value is Signal<any> {
+	return typeof value === "function" && $id in value;
+}
 
-// 	constructor(init: Type);
-// 	constructor(init: () => Type, ...dependencies: Signal<any>[]);
-// 	constructor(init: Type | (() => Type), ...dependencies: Signal<any>[]) {
-// 		this.#id = _id.get();
-// 		if (init instanceof Function) {
-// 			this.#expression = init;
-// 		}
-// 		this.#value = init instanceof Function ? init() : init;
-// 		this.#dependencies = Object.freeze(dependencies);
-// 		this.#listeners = [];
-// 		this.#elements = [];
-// 		this.#elementExpressions = new Map();
-// 		for (const dependency of dependencies) {
-// 			dependency.addListener(this);
-// 		}
-// 		_signals.set(this.#id, this);
-// 	}
+// Computed values are here instead of a separate file to prevent import order issues
 
-// 	addListener(listener: Signal<any>) {
-// 		this.#listeners.push(listener);
-// 	}
+interface Computed<Type> extends Signal<Type> {
+	[$dependencies]: Signal<any>[];
+	[$updater]: () => void;
+}
 
-// 	removeListener(listener: Signal<any>) {
-// 		for (let i = 0; i < this.#listeners.length; i++) {
-// 			if (this.#listeners[i] === listener) {
-// 				this.#listeners.splice(i, 1);
-// 				break;
-// 			}
-// 		}
-// 		if (!this.#elements.length && !this.#listeners.length) {
-// 			for (const dependency of this.#dependencies) {
-// 				dependency.removeListener(this);
-// 			}
-// 			_signals.delete(this.#id);
-// 		}
-// 	}
+const computedPrototype = {
+	[$destroy](this: Computed<any>) {
+		for (const dependency of this[$dependencies]) {
+			dependency[$listeners]?.filter((listener) => listener !== this[$updater]);
+			if (!dependency[$listeners]?.length && !dependency[$nodes]?.length) {
+				dependency[$destroy]();
+			}
+		}
+	},
+};
+Object.setPrototypeOf(computedPrototype, signalPrototype);
 
-// 	// TODO: see for JSX
-// 	// TODO: save expression with element (Map?)
-// 	element(expression?: (value: Type) => any) {
-// 		const element = document.createElement("sig");
-// 		element.innerText = expression?.(this.#value) ?? "" + this.#value;
-// 		element.setAttribute("s-id", "" + this.#id);
-// 		element.setAttribute("i-id", "" + _id.get());
-// 		this.#elements.push(element);
-// 		if (expression) {
-// 			this.#elementExpressions.set(element, expression);
-// 		}
-// 		return element;
-// 	}
+export const creationContext = new Context((context: Computed<any>, value: Signal<any>) => {
+	context[$dependencies].push(value);
+	value[$listeners] ??= [];
+	value[$listeners].push(context[$updater]);
+});
 
-// 	dropElement(id: string) {
-// 		for (let i = 0; i < this.#elements.length; i++) {
-// 			if (this.#elements[i].getAttribute("i-id") === id) {
-// 				this.#elements.splice(i, 1);
-// 				break;
-// 			}
-// 		}
-// 		if (!this.#elements.length && !this.#listeners.length) {
-// 			for (const dependency of this.#dependencies) {
-// 				dependency.removeListener(this);
-// 			}
-// 			_signals.delete(this.#id);
-// 		}
-// 	}
-
-// 	private _emit() {
-// 		for (let i = 0; i < this.#elements.length; i++) {
-// 			this.#elements[i].innerText = this.#elementExpressions.get(this.#elements[i])?.(this.#value) ?? this.#value;
-// 		}
-// 		for (const listener of this.#listeners) {
-// 			listener.refresh();
-// 		}
-// 	}
-
-// 	// TODO: only derived value?
-// 	refresh() {
-// 		if (this.#expression) {
-// 			this.#value = this.#expression();
-// 		}
-// 		this._emit();
-// 	}
-
-// 	// TODO: only source signals?
-// 	get value() {
-// 		return this.#value;
-// 	}
-
-// 	// TODO: only source signals?
-// 	set value(value: Type) {
-// 		this.#value = value;
-// 		this._emit();
-// 	}
-// }
-// const observer = new MutationObserver((mutations) => {
-// 	for (const mutation of mutations) {
-// 		for (const node of mutation.removedNodes) {
-// 			if (node.nodeName === "SIG") {
-// 				_signals
-// 					.get((node as HTMLElement).getAttribute("s-id") ?? "")
-// 					?.dropElement((node as HTMLElement).getAttribute("i-id") ?? "");
-// 			}
-// 		}
-// 	}
-// });
-
-/*******************
- *     TESTING     *
- *******************/
-
-console.log("haha");
-const count = new Signal(0);
-
-document.body.append(count.element());
-const button = document.createElement("button");
-button.innerText = "+1";
-document.body.append(button);
-button.addEventListener("click", () => count.value++);
-
-const text = new Signal("");
-const input = document.createElement("input");
-_bind(input, text);
-document.body.append(input);
-input.addEventListener("input", (e: Event) => (text.value = (e.currentTarget as any)?.value ?? ""));
-
-const div = document.createElement("div");
-div.setAttribute("id", "test-id");
-div.innerHTML = "<!-- s-1-2 -->Hey!";
-document.body.append(div);
-
-setTimeout(() => {
-	// div.remove();
-	// document.body.innerHTML = "";
-}, 3000);
-
-const textNode = document.createTextNode("h");
-console.log(textNode.nodeName);
-document.body.append(textNode);
-textNode.nodeValue = "b";
+/**
+ * Creates a computed value.
+ * Acts as a signal, which is updated when its dependencies change.
+ * On creation, detects signals used for its creation and will listen to them.
+ */
+export function createComputed<Type>(expr: () => Type): Computed<Type> {
+	const computed = Object.setPrototypeOf(createSignal<Type>(undefined as any), computedPrototype) as Computed<Type>;
+	computed[$dependencies] = [];
+	computed[$updater] = () => computed.set(expr());
+	computed[$value] = creationContext.run(expr, computed);
+	return computed;
+}
