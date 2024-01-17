@@ -1,15 +1,18 @@
 {
-  "name": "yaul",
+  "name": "@bmelicque/yauil",
   "version": "0.1.0",
   "description": "Basic UI lib",
-  "author": "Bastien Mélicque",
+  "author": "bmelicque",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "repository": {
+    "url": "https://github.com/bmelicque/yauil"
+  },
   "scripts": {
     "test": "jest",
     "dev": "esbuild ./src/index.tsx --bundle --outfile=/dist/dev.js --target=es6 --watch",
-    "build": "tsup src/index.tsx --format cjs,esm --dts --minify"
+    "build": "tsup src/index.tsx --format cjs,esm --dts"
   },
   "license": "ISC",
   "devDependencies": {

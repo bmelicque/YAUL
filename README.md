@@ -1,8 +1,10 @@
-# What's Yaul?
+# What's Yauil?
 
-**Yaul** (standing for _Yet Another UI Library_, or _Why Another UI Library?_) is, as its name implies, a frontend framework/library.
+**Yauil** (standing for _Yet Another UI Library_, or _Why Another UI Library?_) is, as its name implies, a frontend framework/library.
 
-It's designed as a lightweight, TypeScript-first, and easy-to-learn. It's not production ready though (and will probably never be...).
+It's a personnal porject with the objective of learning, designed to be lightweight a TypeScript-first.
+
+**Please don't use this in production**
 
 # Motivation
 
@@ -19,7 +21,7 @@ A few things I've learned:
 # A basic component
 
 ```jsx
-import { createComputed, createSignal, jsx } from "yaul";
+import { createComputed, createSignal, jsx } from "yauil";
 
 function Counter() {
 	const count = createSignal(0);
@@ -38,7 +40,7 @@ function Counter() {
 }
 ```
 
-Yaul uses functions and JSX to create components. Contrary to React, functions are constructors that are only run once. Yaul uses no virtual DOM and uses signals to update the real DOM.
+Yauil uses functions and JSX to create components. Contrary to React, functions are constructors that are only run once. Yauil uses no virtual DOM and uses signals to update the real DOM.
 
 # Signals, Computed & Stores
 
@@ -85,7 +87,7 @@ const reactiveName = user.name; // reactiveName is a signal
 
 # Built-in components
 
-Yaul provides a couple built-in components, `<Show />` and `<For />`
+Yauil provides a couple built-in components, `<Show />` and `<For />`
 
 ```jsx
 const show = createSignal(true);
